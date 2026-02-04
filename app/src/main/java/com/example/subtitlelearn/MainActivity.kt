@@ -2,8 +2,11 @@ package com.example.subtitlelearn
 
 import android.Manifest
 import android.app.Activity
-import android.content.Context
-import android.media.*
+import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioPlaybackCaptureConfiguration
+import android.media.AudioRecord
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
@@ -11,9 +14,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresPermission
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import java.io.File
 import java.io.FileOutputStream
@@ -31,17 +34,20 @@ class MainActivity : ComponentActivity() {
     private val projectionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK) {
-                mediaProjection =
-                    projectionManager.getMediaProjection(result.resultCode, result.data!!)
-                startRecording()
+                val intent = Intent(this, CaptureService::class.java).apply {
+                    putExtra("code", result.resultCode)
+                    putExtra("data", result.data)
+                }
+                startForegroundService(intent)
             }
         }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         projectionManager =
-            getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
         audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
 
