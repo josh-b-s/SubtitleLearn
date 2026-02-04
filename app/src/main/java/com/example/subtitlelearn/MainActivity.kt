@@ -1,11 +1,14 @@
 package com.example.subtitlelearn
 
+import android.app.Activity
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 
 
@@ -43,18 +46,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ) {
         super.onActivityResult(requestCode, resultCode, data)
 
-        if (requestCode == REQ_CAPTURE && resultCode == RESULT_OK && data != null) {
-            startService(Intent(this, OverlayService::class.java))
+        Log.i("MainActivity", "onActivityResult resultCode=$resultCode dataNull=${data == null}")
 
-            startService(
-                Intent(this, CaptureService::class.java).apply {
-                    putExtra("code", resultCode)
-                    putExtra("data", data)
-                }
-            )
+        if (requestCode == REQ_CAPTURE &&
+            resultCode == RESULT_OK &&
+            data != null
+        ) {
+            val intent = Intent(this, CaptureService::class.java).apply {
+                putExtra("resultCode", resultCode)
+                putExtra("data", data)
+            }
+
+            ContextCompat.startForegroundService(this, intent)
         }
     }
+
 }
