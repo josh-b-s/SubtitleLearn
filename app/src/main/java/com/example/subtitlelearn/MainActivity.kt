@@ -1,6 +1,5 @@
 package com.example.subtitlelearn
 
-import android.app.Activity
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
@@ -59,6 +58,8 @@ class MainActivity : AppCompatActivity() {
             resultCode == RESULT_OK &&
             data != null
         ) {
+            startService(Intent(this, OverlayService::class.java))
+
             val intent = Intent(this, CaptureService::class.java).apply {
                 putExtra("resultCode", resultCode)
                 putExtra("data", data)
