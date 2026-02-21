@@ -1,34 +1,26 @@
 package com.example.subtitlelearn
 
 import android.app.Service
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.IBinder
+import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.TextView
-import androidx.annotation.RequiresApi
 
 class OverlayService : Service() {
 
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private lateinit var wm: WindowManager
     private lateinit var view: TextView
-    private val receiver = object : android.content.BroadcastReceiver() {
-        override fun onReceive(context: android.content.Context?, intent: Intent?) {
-            val text = intent?.getStringExtra("text") ?: return
-            view.text = text
-        }
-    }
 
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate() {
         super.onCreate()
-        registerReceiver(
-            receiver,
-            android.content.IntentFilter("TRANSCRIPTION_UPDATE"),
-            RECEIVER_NOT_EXPORTED
-        )
 
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
@@ -38,13 +30,14 @@ class OverlayService : Service() {
             setTextColor(Color.WHITE)
             setBackgroundColor(0x88000000.toInt())
             setPadding(24, 16, 24, 16)
+            maxWidth = resources.displayMetrics.widthPixels - 100
         }
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
 
@@ -52,13 +45,22 @@ class OverlayService : Service() {
         params.y = 120
 
         wm.addView(view, params)
+
+        // Bridge hookup
+        OverlayBridge.update = { text ->
+            mainHandler.post {
+                view.text = text
+            }
+        }
+
+        Log.i("OVERLAY", "OverlayService ready")
     }
 
     override fun onDestroy() {
-        unregisterReceiver(receiver)
+        OverlayBridge.update = null
         wm.removeView(view)
         super.onDestroy()
     }
 
-    override fun onBind(intent: Intent?) = null
+    override fun onBind(intent: Intent?): IBinder? = null
 }

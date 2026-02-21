@@ -29,6 +29,7 @@ class CaptureService : Service() {
     private var recordingThread: Thread? = null
     private var voskModel: Model? = null
     private var recognizer: Recognizer? = null
+    private var lastText = ""
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -71,7 +72,8 @@ class CaptureService : Service() {
             sampleRate, channelConfig, audioFormat
         )
 
-        val config = AudioPlaybackCaptureConfiguration.Builder(mediaProjection!!)
+        val projection = mediaProjection ?: return
+        val config = AudioPlaybackCaptureConfiguration.Builder(projection)
             .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
             .addMatchingUsage(AudioAttributes.USAGE_GAME).build()
 
@@ -89,6 +91,14 @@ class CaptureService : Service() {
             return
         }
 
+        try {
+            voskModel = ModelLoader.loadModel(this)
+            recognizer = Recognizer(voskModel, 16000.0f)
+            Log.i("VOSK", "Model loaded")
+        } catch (e: Exception) {
+            Log.e("VOSK", "Model failed: ${e.message}")
+        }
+
         audioRecord?.startRecording()
         isRecording = true
 
@@ -97,14 +107,6 @@ class CaptureService : Service() {
         )
 
         recordingThread = Thread {
-            try {
-                voskModel = ModelLoader.loadModel(this)
-                recognizer = Recognizer(voskModel, 16000.0f)
-                Log.i("VOSK", "Model loaded")
-            } catch (e: Exception) {
-                Log.e("VOSK", "Model failed: ${e.message}")
-            }
-
             val shortBuffer = ShortArray(bufferSize * 2)
 
             while (isRecording) {
@@ -119,7 +121,8 @@ class CaptureService : Service() {
                         val byteBuffer = ByteArray(read * 2)
 
                         var i = 0
-                        for (s in shortBuffer.take(read)) {
+                        for (index in 0 until read) {
+                            val s = shortBuffer[index]
                             byteBuffer[i++] = (s.toInt() and 0xFF).toByte()
                             byteBuffer[i++] = ((s.toInt() shr 8) and 0xFF).toByte()
                         }
@@ -148,25 +151,39 @@ class CaptureService : Service() {
     }
 
     private fun sendToSpeech(byteBuffer: ByteArray) {
-        val rec = recognizer ?: return
+        val rec = recognizer
+        if (rec == null) {
+            //Log.e("PIPELINE", "Recognizer is NULL")
+            return
+        }
 
         val isFinal = rec.acceptWaveForm(byteBuffer, byteBuffer.size)
+        val json = if (isFinal) rec.result else rec.partialResult
 
-        if (isFinal) {
-            val result = rec.result
-            Log.i("VOSK_FINAL", result)
-            sendToOverlay(result)
-        } else {
-            val partial = rec.partialResult
-            Log.i("VOSK_PARTIAL", partial)
-            sendToOverlay(partial)
+        //Log.i("PIPELINE_RAW", json)
+
+        val text = extractText(json)
+
+        //Log.i("PIPELINE_TEXT", "extracted='$text'")
+
+        if (text.isNotBlank() && text != lastText) {
+            lastText = text
+            Log.i("PIPELINE_SEND", "sending='$text'")
+            OverlayBridge.update?.invoke(text)
         }
     }
 
-    private fun sendToOverlay(text: String) {
-        val intent = Intent("TRANSCRIPTION_UPDATE")
-        intent.putExtra("text", text)
-        sendBroadcast(intent)
+    private fun extractText(json: String): String {
+        return try {
+            val obj = org.json.JSONObject(json)
+            when {
+                obj.has("text") -> obj.getString("text")
+                obj.has("partial") -> obj.getString("partial")
+                else -> ""
+            }
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     override fun onDestroy() {
@@ -181,6 +198,12 @@ class CaptureService : Service() {
 
         mediaProjection?.stop()
         mediaProjection = null
+
+        recognizer?.close()
+        recognizer = null
+
+        voskModel?.close()
+        voskModel = null
 
         Log.i("CaptureService", "Service destroyed, recording stopped")
 
