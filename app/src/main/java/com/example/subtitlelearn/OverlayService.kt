@@ -4,17 +4,31 @@ import android.app.Service
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.os.Build
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.TextView
+import androidx.annotation.RequiresApi
 
 class OverlayService : Service() {
 
     private lateinit var wm: WindowManager
     private lateinit var view: TextView
+    private val receiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            val text = intent?.getStringExtra("text") ?: return
+            view.text = text
+        }
+    }
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate() {
         super.onCreate()
+        registerReceiver(
+            receiver,
+            android.content.IntentFilter("TRANSCRIPTION_UPDATE"),
+            RECEIVER_NOT_EXPORTED
+        )
 
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
@@ -41,6 +55,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        unregisterReceiver(receiver)
         wm.removeView(view)
         super.onDestroy()
     }

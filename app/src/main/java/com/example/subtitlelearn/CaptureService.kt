@@ -17,6 +17,8 @@ import android.os.IBinder
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
+import org.vosk.Model
+import org.vosk.Recognizer
 
 class CaptureService : Service() {
 
@@ -25,6 +27,8 @@ class CaptureService : Service() {
     private var audioRecord: AudioRecord? = null
     private var isRecording = false
     private var recordingThread: Thread? = null
+    private var voskModel: Model? = null
+    private var recognizer: Recognizer? = null
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -69,8 +73,7 @@ class CaptureService : Service() {
 
         val config = AudioPlaybackCaptureConfiguration.Builder(mediaProjection!!)
             .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-            .addMatchingUsage(AudioAttributes.USAGE_GAME)
-            .build()
+            .addMatchingUsage(AudioAttributes.USAGE_GAME).build()
 
         audioRecord = AudioRecord.Builder().setAudioFormat(
             AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
@@ -94,6 +97,14 @@ class CaptureService : Service() {
         )
 
         recordingThread = Thread {
+            try {
+                voskModel = ModelLoader.loadModel(this)
+                recognizer = Recognizer(voskModel, 16000.0f)
+                Log.i("VOSK", "Model loaded")
+            } catch (e: Exception) {
+                Log.e("VOSK", "Model failed: ${e.message}")
+            }
+
             val shortBuffer = ShortArray(bufferSize * 2)
 
             while (isRecording) {
@@ -137,7 +148,25 @@ class CaptureService : Service() {
     }
 
     private fun sendToSpeech(byteBuffer: ByteArray) {
+        val rec = recognizer ?: return
 
+        val isFinal = rec.acceptWaveForm(byteBuffer, byteBuffer.size)
+
+        if (isFinal) {
+            val result = rec.result
+            Log.i("VOSK_FINAL", result)
+            sendToOverlay(result)
+        } else {
+            val partial = rec.partialResult
+            Log.i("VOSK_PARTIAL", partial)
+            sendToOverlay(partial)
+        }
+    }
+
+    private fun sendToOverlay(text: String) {
+        val intent = Intent("TRANSCRIPTION_UPDATE")
+        intent.putExtra("text", text)
+        sendBroadcast(intent)
     }
 
     override fun onDestroy() {
