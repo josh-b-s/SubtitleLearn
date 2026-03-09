@@ -1,37 +1,41 @@
 package com.example.subtitlelearn
 
 import android.app.Service
-import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PixelFormat
-import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
-import android.widget.TextView
+import android.widget.HorizontalScrollView
+import android.widget.FrameLayout
+import com.github.promeg.pinyinhelper.Pinyin
 
 class OverlayService : Service() {
 
-    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var wm: WindowManager
-    private lateinit var view: TextView
+    private lateinit var scrollView: HorizontalScrollView
+    private lateinit var overlayView: PinyinOverlayView
 
     override fun onCreate() {
         super.onCreate()
 
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
-        view = TextView(this).apply {
-            text = "Listening..."
-            textSize = 18f
-            setTextColor(Color.WHITE)
+        // HorizontalScrollView to avoid wrapping
+        scrollView = HorizontalScrollView(this)
+        scrollView.isHorizontalScrollBarEnabled = false
+
+        overlayView = PinyinOverlayView(this).apply {
             setBackgroundColor(0x88000000.toInt())
             setPadding(24, 16, 24, 16)
-            maxWidth = resources.displayMetrics.widthPixels - 100
         }
+
+        scrollView.addView(overlayView)
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -44,12 +48,13 @@ class OverlayService : Service() {
         params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
         params.y = 120
 
-        wm.addView(view, params)
+        wm.addView(scrollView, params)
 
-        // Bridge hookup
+        // Bridge to update from CaptureService
         OverlayBridge.update = { text ->
             mainHandler.post {
-                view.text = text
+                overlayView.setText(text)
+                scrollView.fullScroll(HorizontalScrollView.FOCUS_RIGHT)
             }
         }
 
@@ -58,7 +63,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         OverlayBridge.update = null
-        wm.removeView(view)
+        wm.removeView(scrollView)
         super.onDestroy()
     }
 
