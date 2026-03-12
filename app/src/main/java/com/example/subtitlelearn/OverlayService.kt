@@ -50,10 +50,19 @@ class OverlayService : Service() {
 
         wm.addView(scrollView, params)
 
-        // Bridge to update from CaptureService
         OverlayBridge.update = { text ->
+            val words = text.trim().split(" ").filter { it.isNotBlank() }
+
+            val filteredWords = words.filter { word ->
+                val meaning = CedictDictionary.getMeaning(word)
+                !meaning.isNullOrBlank() && word !in listOf("的","是","啊","了")
+            }
+            val meanings = filteredWords.associateWith { word ->
+                CedictDictionary.getMeaning(word)
+            }
+
             mainHandler.post {
-                overlayView.setText(text)
+                overlayView.setText(words, meanings)
                 scrollView.fullScroll(HorizontalScrollView.FOCUS_RIGHT)
             }
         }

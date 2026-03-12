@@ -5,15 +5,13 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.util.AttributeSet
+import android.util.Log
 import android.view.View
 import com.github.promeg.pinyinhelper.Pinyin
 
 class PinyinOverlayView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : View(context, attrs) {
-
-    private var chineseText: String = ""
-    private var pinyinList: List<String> = emptyList()
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -26,32 +24,39 @@ class PinyinOverlayView @JvmOverloads constructor(
     }
 
     private val spacing = 10f
-    private var lines: MutableList<List<Pair<String, String>>> = mutableListOf()
 
-    fun setText(text: String) {
-        chineseText = text
-        pinyinList = text.map { char ->
-            if (char.toString().matches(Regex("[\\u4e00-\\u9fa5]"))) {
-                Pinyin.toPinyin(char).lowercase()
-            } else {
-                char.toString()
+    // Each item is Triple<pinyin, hanzi, meaning>
+    private var lines: MutableList<List<Triple<String, String, String>>> = mutableListOf()
+
+    fun setText(words: List<String>, meanings: Map<String, String>) {
+
+        val wordTriples = mutableListOf<Triple<String, String, String>>()
+
+        for (word in words) {
+            val wordPinyin = Pinyin.toPinyin(word, " ").lowercase().split(" ")
+            val meaning = meanings[word] ?: ""
+
+            for (i in word.indices) {
+                val py = if (i < wordPinyin.size) wordPinyin[i] else ""
+                val ch = word[i].toString()
+                // Only assign meaning to first character of word
+                val m = if (i == 0) meaning else ""
+                wordTriples.add(Triple(py, ch, m))
             }
         }
-        createLines()
-        requestLayout()
-        invalidate()
-    }
 
-    private fun createLines() {
+        // Build lines
         lines.clear()
         val maxWidth = resources.displayMetrics.widthPixels - 100f
-        var line = mutableListOf<Pair<String, String>>()
+        var line = mutableListOf<Triple<String, String, String>>()
         var currentWidth = 0f
 
-        for (i in chineseText.indices) {
-            val py = pinyinList[i]
-            val ch = chineseText[i].toString()
-            val charWidth = maxOf(pinyinPaint.measureText(py), textPaint.measureText(ch)) + spacing
+        for ((py, ch, m) in wordTriples) {
+            val charWidth = maxOf(
+                pinyinPaint.measureText(py),
+                textPaint.measureText(ch),
+                textPaint.measureText(m)
+            ) + spacing
 
             if (currentWidth + charWidth > maxWidth) {
                 lines.add(line)
@@ -59,18 +64,19 @@ class PinyinOverlayView @JvmOverloads constructor(
                 currentWidth = 0f
             }
 
-            line.add(py to ch)
+            line.add(Triple(py, ch, m))
             currentWidth += charWidth
         }
 
-        if (line.isNotEmpty()) {
-            lines.add(line)
-        }
+        if (line.isNotEmpty()) lines.add(line)
+
+        requestLayout()
+        invalidate()
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = resources.displayMetrics.widthPixels
-        val height = ((pinyinPaint.textSize + textPaint.textSize + spacing) * lines.size + spacing).toInt()
+        val height = ((pinyinPaint.textSize + textPaint.textSize * 2 + spacing * 3) * lines.size + spacing).toInt()
         setMeasuredDimension(width, height)
     }
 
@@ -80,14 +86,24 @@ class PinyinOverlayView @JvmOverloads constructor(
         var y = pinyinPaint.textSize + spacing
 
         for (line in lines) {
+            Log.i("line", line.toString())
             var x = spacing
-            for ((py, ch) in line) {
+            for ((py, ch, meaning) in line) {
+                // Draw top: Pinyin
                 canvas.drawText(py, x, y, pinyinPaint)
+                // Draw middle: Hanzi
                 canvas.drawText(ch, x, y + spacing + textPaint.textSize, textPaint)
-
-                x += maxOf(pinyinPaint.measureText(py), textPaint.measureText(ch)) + spacing
+                // Draw bottom: Meaning (only on first char of word)
+                if (meaning.isNotEmpty()) {
+                    canvas.drawText(meaning, x, y + spacing * 2 + textPaint.textSize * 2, textPaint)
+                }
+                x += maxOf(
+                    pinyinPaint.measureText(py),
+                    textPaint.measureText(ch),
+                    textPaint.measureText(meaning)
+                ) + spacing
             }
-            y += pinyinPaint.textSize + textPaint.textSize + spacing * 2
+            y += pinyinPaint.textSize + textPaint.textSize * 2 + spacing * 3
         }
     }
 }
