@@ -8,32 +8,23 @@ object CedictDictionary {
     private val dictionary = HashMap<String, String>()
 
     fun load(context: Context) {
-
         if (dictionary.isNotEmpty()) return
 
         try {
             context.assets.open("cedict_ts.u8").bufferedReader().useLines { lines ->
-
                 lines.forEach { line ->
-
                     if (line.startsWith("#")) return@forEach
 
-                    // Example:
-                    // 瑞士 瑞士 [Rui4 shi4] /Switzerland/Swiss/
-
                     val parts = line.split("/")
-
                     if (parts.size < 2) return@forEach
 
                     val head = parts[0]
                     val def = parts[1]
 
                     val words = head.split(" ")
-
                     if (words.size < 2) return@forEach
 
                     val simplified = words[1]
-
                     val shortMeaning = shortMeaning(def)
 
                     if (shortMeaning.isNotEmpty()) {
@@ -43,7 +34,6 @@ object CedictDictionary {
             }
 
             Log.i("CEDICT", "Loaded entries: ${dictionary.size}")
-
         } catch (e: Exception) {
             Log.e("CEDICT", "Failed loading dictionary", e)
         }
@@ -54,18 +44,17 @@ object CedictDictionary {
     }
 
     private fun shortMeaning(def: String): String {
-
         var result = def
 
         result = result.replace(Regex("\\(.*?\\)"), "")
+        result = result.replace(Regex("\\p{IsHan}+"), "")
+        result = result.replace(Regex("\\[[^\\]]*]"), "")
 
-        result = result.split("/", ";").firstOrNull() ?: ""
+        val parts = result.split("/", ";").map { it.trim() }.filter { it.isNotEmpty() }
+        val cleaned = parts.map { it.removePrefix("to ").trim() }.filter { it.isNotEmpty() }
 
-        result = result.removePrefix("to ")
-
-        val words = result.trim().split(" ")
-
-        return words.take(2).joinToString(" ")
+        // Take first non-empty meaning
+        return cleaned.firstOrNull() ?: ""
     }
 
     fun getMeaning(word: String): String {

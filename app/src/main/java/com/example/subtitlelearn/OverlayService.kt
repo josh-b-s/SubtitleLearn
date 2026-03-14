@@ -53,11 +53,7 @@ class OverlayService : Service() {
         OverlayBridge.update = { text ->
             val words = text.trim().split(" ").filter { it.isNotBlank() }
 
-            val filteredWords = words.filter { word ->
-                val meaning = CedictDictionary.getMeaning(word)
-                !meaning.isNullOrBlank() && word !in listOf("的","是","啊","了")
-            }
-            val meanings = filteredWords.associateWith { word ->
+            val meanings = words.associateWith { word ->
                 CedictDictionary.getMeaning(word)
             }
 
