@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.util.AttributeSet
-import android.util.Log
 import android.view.View
 import com.github.promeg.pinyinhelper.Pinyin
 
@@ -23,52 +22,56 @@ class PinyinOverlayView @JvmOverloads constructor(
         textSize = 35f
     }
 
-    private val spacing = 10f
+    private val spacing = 20f
 
-    // Each item is Triple<pinyin, hanzi, meaning>
-    private var lines: MutableList<List<Triple<String, String, String>>> = mutableListOf()
+    // Lines: each line is a list of words
+    // Each word: Pair<List<Pair<pinyin, hanzi>>, meaning>
+    private var lines: MutableList<List<Pair<List<Pair<String,String>>, String>>> = mutableListOf()
 
     fun setText(words: List<String>, meanings: Map<String, String>) {
 
-        val wordTriples = mutableListOf<Triple<String, String, String>>()
-
+        val wordCells = mutableListOf<Pair<List<Pair<String,String>>, String>>()
         for (word in words) {
-            val wordPinyin = Pinyin.toPinyin(word, " ").lowercase().split(" ")
+            val pinyinList = Pinyin.toPinyin(word, " ").lowercase().split(" ")
             val meaning = meanings[word] ?: ""
 
+            val characters = mutableListOf<Pair<String,String>>()
             for (i in word.indices) {
-                val py = if (i < wordPinyin.size) wordPinyin[i] else ""
+                val py = if (i < pinyinList.size) pinyinList[i] else ""
                 val ch = word[i].toString()
-                // Only assign meaning to first character of word
-                val m = if (i == 0) meaning else ""
-                wordTriples.add(Triple(py, ch, m))
+                characters.add(Pair(py, ch))
             }
+
+            wordCells.add(Pair(characters, meaning))
         }
 
-        // Build lines
+        // Wrap words into lines
         lines.clear()
-        val maxWidth = resources.displayMetrics.widthPixels - 100f
-        var line = mutableListOf<Triple<String, String, String>>()
+        val maxWidth = resources.displayMetrics.widthPixels - spacing
+        var currentLine = mutableListOf<Pair<List<Pair<String,String>>, String>>()
         var currentWidth = 0f
 
-        for ((py, ch, m) in wordTriples) {
-            val charWidth = maxOf(
-                pinyinPaint.measureText(py),
-                textPaint.measureText(ch),
-                textPaint.measureText(m)
-            ) + spacing
+        for ((chars, meaning) in wordCells) {
+            var wordWidth = 0f
+            for ((py, ch) in chars) {
+                wordWidth += maxOf(pinyinPaint.measureText(py), textPaint.measureText(ch)) + spacing
+            }
 
-            if (currentWidth + charWidth > maxWidth) {
-                lines.add(line)
-                line = mutableListOf()
+            // Reserve space for meaning: check width of meaning text
+            val meaningWidth = if (meaning.isNotEmpty()) textPaint.measureText(meaning) + spacing else 0f
+            val totalWordWidth = maxOf(wordWidth, meaningWidth)
+
+            if (currentWidth + totalWordWidth > maxWidth) {
+                lines.add(currentLine)
+                currentLine = mutableListOf()
                 currentWidth = 0f
             }
 
-            line.add(Triple(py, ch, m))
-            currentWidth += charWidth
+            currentLine.add(Pair(chars, meaning))
+            currentWidth += totalWordWidth
         }
 
-        if (line.isNotEmpty()) lines.add(line)
+        if (currentLine.isNotEmpty()) lines.add(currentLine)
 
         requestLayout()
         invalidate()
@@ -76,7 +79,8 @@ class PinyinOverlayView @JvmOverloads constructor(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = resources.displayMetrics.widthPixels
-        val height = ((pinyinPaint.textSize + textPaint.textSize * 2 + spacing * 3) * lines.size + spacing).toInt()
+        val height =
+            ((pinyinPaint.textSize + textPaint.textSize * 2 + spacing * 3) * lines.size + spacing).toInt()
         setMeasuredDimension(width, height)
     }
 
@@ -86,23 +90,32 @@ class PinyinOverlayView @JvmOverloads constructor(
         var y = pinyinPaint.textSize + spacing
 
         for (line in lines) {
-            Log.i("line", line.toString())
             var x = spacing
-            for ((py, ch, meaning) in line) {
-                // Draw top: Pinyin
-                canvas.drawText(py, x, y, pinyinPaint)
-                // Draw middle: Hanzi
-                canvas.drawText(ch, x, y + spacing + textPaint.textSize, textPaint)
-                // Draw bottom: Meaning (only on first char of word)
-                if (meaning.isNotEmpty()) {
-                    canvas.drawText(meaning, x, y + spacing * 2 + textPaint.textSize * 2, textPaint)
+
+            for ((chars, meaning) in line) {
+                val wordStartX = x
+                var wordWidth = 0f
+
+                for ((py, ch) in chars) {
+                    val charWidth = maxOf(pinyinPaint.measureText(py), textPaint.measureText(ch))
+                    canvas.drawText(py, x, y, pinyinPaint)
+                    canvas.drawText(ch, x, y + spacing + textPaint.textSize, textPaint)
+                    x += charWidth + spacing
+                    wordWidth += charWidth + spacing
                 }
-                x += maxOf(
-                    pinyinPaint.measureText(py),
-                    textPaint.measureText(ch),
-                    textPaint.measureText(meaning)
-                ) + spacing
+
+                if (meaning.isNotEmpty()) {
+                    canvas.drawText(
+                        meaning,
+                        wordStartX,
+                        y + spacing * 2 + textPaint.textSize * 2,
+                        textPaint
+                    )
+                    // Ensure next word starts after the wider of word or meaning
+                    x = wordStartX + maxOf(wordWidth, textPaint.measureText(meaning) + spacing)
+                }
             }
+
             y += pinyinPaint.textSize + textPaint.textSize * 2 + spacing * 3
         }
     }
