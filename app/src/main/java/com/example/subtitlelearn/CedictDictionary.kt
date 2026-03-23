@@ -11,31 +11,32 @@ object CedictDictionary {
         if (dictionary.isNotEmpty()) return
 
         try {
-            context.assets.open("cedict_ts.u8").bufferedReader().useLines { lines ->
-                lines.forEach { line ->
-                    if (line.startsWith("#")) return@forEach
+            context.assets.open("PD-English-Definitions.tsv")
+                .bufferedReader()
+                .useLines { lines ->
 
-                    val parts = line.split("/")
-                    if (parts.size < 2) return@forEach
+                    lines.forEach { line ->
+                        if (line.isBlank()) return@forEach
 
-                    val head = parts[0]
-                    val def = parts[1]
+                        val parts = line.split("\t")
 
-                    val words = head.split(" ")
-                    if (words.size < 2) return@forEach
+                        if (parts.size < 2) return@forEach
 
-                    val simplified = words[1]
-                    val shortMeaning = shortMeaning(def)
+                        val word = parts[0].trim()
+                        val defRaw = parts.last().trim()
 
-                    if (shortMeaning.isNotEmpty()) {
-                        dictionary[simplified] = shortMeaning
+                        val shortMeaning = shortMeaning(defRaw)
+
+                        if (shortMeaning.isNotEmpty()) {
+                            dictionary[word] = shortMeaning
+                        }
                     }
                 }
-            }
 
-            Log.i("CEDICT", "Loaded entries: ${dictionary.size}")
+            Log.i("DICT", "Loaded entries: ${dictionary.size}")
+
         } catch (e: Exception) {
-            Log.e("CEDICT", "Failed loading dictionary", e)
+            Log.e("DICT", "Failed loading dictionary", e)
         }
     }
 
@@ -43,30 +44,35 @@ object CedictDictionary {
         return dictionary[word] ?: ""
     }
 
-    private fun shortMeaning(def: String): String {
-        var result = def
-
-        result = result.replace(Regex("\\(.*?\\)"), "")
-        result = result.replace(Regex("\\p{IsHan}+"), "")
-        result = result.replace(Regex("\\[[^\\]]*]"), "")
-
-        val parts = result.split("/", ";").map { it.trim() }.filter { it.isNotEmpty() }
-        val cleaned = parts.map { it.removePrefix("to ").trim() }.filter { it.isNotEmpty() }
-
-        // Take first non-empty meaning
-        return cleaned.firstOrNull() ?: ""
-    }
-
     fun getMeaning(word: String): String {
 
-        val w = get(word)
+        // exact match first
+        val direct = get(word)
+        if (direct.isNotEmpty()) return direct
 
-        if (w.isNotEmpty()) return w
-
-        if (word.length > 1) {
-            return get(word.substring(0, 1))
+        // try shorter substrings
+        for (i in word.length - 1 downTo 1) {
+            val sub = word.substring(0, i)
+            val m = get(sub)
+            if (m.isNotEmpty()) return m
         }
 
         return ""
+    }
+
+    private fun shortMeaning(def: String): String {
+        // Example: "talk over/to discuss/consult"
+
+        val parts = def.split("/")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        // remove "to " for verbs
+        val cleaned = parts.map {
+            it.removePrefix("to ").trim()
+        }
+
+        // take 1–2 meanings max (prevents overflow)
+        return cleaned.take(2).joinToString("; ")
     }
 }
