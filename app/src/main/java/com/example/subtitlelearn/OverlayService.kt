@@ -2,19 +2,12 @@ package com.example.subtitlelearn
 
 import android.app.Service
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.IBinder
-import android.os.Handler
-import android.os.Looper
-import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
-import android.widget.HorizontalScrollView
-import android.widget.FrameLayout
 import com.example.subtitlelearn.ui.theme.segment
-import com.github.promeg.pinyinhelper.Pinyin
 
 class OverlayService : Service() {
 

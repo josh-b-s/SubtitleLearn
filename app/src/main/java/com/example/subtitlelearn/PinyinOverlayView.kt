@@ -26,11 +26,11 @@ class PinyinOverlayView @JvmOverloads constructor(
 
     // Lines: each line is a list of words
     // Each word: Pair<List<Pair<pinyin, hanzi>>, meaning>
-    private var lines: MutableList<List<Pair<List<Pair<String,String>>, String>>> = mutableListOf()
+    private var lines: MutableList<List<Pair<List<Pair<String, String>>, String>>> = mutableListOf()
 
     fun setText(words: List<String>, meanings: Map<String, String>) {
 
-        val wordCells = mutableListOf<Pair<List<Pair<String,String>>, String>>()
+        val wordCells = mutableListOf<Pair<List<Pair<String, String>>, String>>()
         for (word in words) {
             val pinyinList = Pinyin.toPinyin(word, " ").lowercase().split(" ")
             val meaningRaw = meanings[word] ?: ""
@@ -42,7 +42,7 @@ class PinyinOverlayView @JvmOverloads constructor(
                 .take(2)
                 .joinToString("\n")
 
-            val characters = mutableListOf<Pair<String,String>>()
+            val characters = mutableListOf<Pair<String, String>>()
             for (i in word.indices) {
                 val py = if (i < pinyinList.size) pinyinList[i] else ""
                 val ch = word[i].toString()
@@ -55,7 +55,7 @@ class PinyinOverlayView @JvmOverloads constructor(
         // Wrap words into lines
         lines.clear()
         val maxWidth = resources.displayMetrics.widthPixels - spacing
-        var currentLine = mutableListOf<Pair<List<Pair<String,String>>, String>>()
+        var currentLine = mutableListOf<Pair<List<Pair<String, String>>, String>>()
         var currentWidth = 0f
 
         for ((chars, meaning) in wordCells) {

@@ -18,7 +18,11 @@ object ModelLoader {
         return Model(outDir.absolutePath)
     }
 
-    private fun copyAssets(assetManager: android.content.res.AssetManager, path: String, outDir: File) {
+    private fun copyAssets(
+        assetManager: android.content.res.AssetManager,
+        path: String,
+        outDir: File
+    ) {
         val files = assetManager.list(path) ?: return
         outDir.mkdirs()
 
