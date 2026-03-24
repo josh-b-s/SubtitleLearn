@@ -12,6 +12,7 @@ import android.view.Gravity
 import android.view.WindowManager
 import android.widget.HorizontalScrollView
 import android.widget.FrameLayout
+import com.example.subtitlelearn.ui.theme.segment
 import com.github.promeg.pinyinhelper.Pinyin
 
 class OverlayService : Service() {
@@ -51,7 +52,8 @@ class OverlayService : Service() {
         wm.addView(scrollView, params)
 
         OverlayBridge.update = { text ->
-            val words = text.trim().split(" ").filter { it.isNotBlank() }
+            val raw = text.replace(" ", "")
+            val words = segment(raw).filter { it.isNotBlank() }
 
             val meanings = words.associateWith { word ->
                 CedictDictionary.getMeaning(word)
