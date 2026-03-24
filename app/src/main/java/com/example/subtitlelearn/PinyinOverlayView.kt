@@ -22,7 +22,7 @@ class PinyinOverlayView @JvmOverloads constructor(
         textSize = 35f
     }
 
-    private val spacing = 20f
+    private val spacing = 12f
 
     // Lines: each line is a list of words
     // Each word: Pair<List<Pair<pinyin, hanzi>>, meaning>
@@ -108,7 +108,7 @@ class PinyinOverlayView @JvmOverloads constructor(
 
             totalHeight += rowHeight
         }
-
+        totalHeight += spacing * 2
         setMeasuredDimension(width, totalHeight.toInt())
     }
 
@@ -142,19 +142,26 @@ class PinyinOverlayView @JvmOverloads constructor(
                         canvas.drawText(line, wordStartX, my, textPaint)
                         my += textPaint.textSize + spacing
                     }
+                    val meaningWidth = if (meaning.isNotEmpty()) {
+                        meaning.split("\n").maxOf { textPaint.measureText(it) }
+                    } else 0f
 
-                    // Ensure next word starts after the wider of word or meaning
-                    x = wordStartX + maxOf(wordWidth, textPaint.measureText(meaning) + spacing)
+                    x = wordStartX + maxOf(wordWidth, meaningWidth + spacing)
                 }
             }
 
-            val maxMeaningLines = line.maxOf { it.second.split("\n").size }
+            val maxMeaningLines = line.maxOf {
+                if (it.second.isEmpty()) 0 else it.second.split("\n").size
+            }
 
             val rowHeight =
-                pinyinPaint.textSize +
-                        textPaint.textSize * 2 +
-                        (textPaint.textSize * maxMeaningLines) +
-                        spacing * (3 + maxMeaningLines)
+                pinyinPaint.textSize +             // pinyin
+                        spacing +
+                        textPaint.textSize +               // hanzi
+                        spacing +
+                        (textPaint.textSize * maxMeaningLines) + // meanings
+                        spacing * (1 + maxMeaningLines) +  // spacing between meanings
+                        spacing                            // bottom padding
 
             y += rowHeight
         }
