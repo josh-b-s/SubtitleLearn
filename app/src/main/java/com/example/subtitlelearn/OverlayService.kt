@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.WindowManager
 import android.widget.HorizontalScrollView
 import android.widget.FrameLayout
@@ -17,40 +18,74 @@ import com.github.promeg.pinyinhelper.Pinyin
 
 class OverlayService : Service() {
 
-    private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var wm: WindowManager
-    private lateinit var scrollView: HorizontalScrollView
+    private lateinit var params: WindowManager.LayoutParams
     private lateinit var overlayView: PinyinOverlayView
+
+    private var lastX = 0f
+    private var lastY = 0f
 
     override fun onCreate() {
         super.onCreate()
 
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
-        // HorizontalScrollView to avoid wrapping
-        scrollView = HorizontalScrollView(this)
-        scrollView.isHorizontalScrollBarEnabled = false
-
         overlayView = PinyinOverlayView(this).apply {
             setBackgroundColor(0x88000000.toInt())
             setPadding(24, 16, 24, 16)
         }
 
-        scrollView.addView(overlayView)
-
-        val params = WindowManager.LayoutParams(
+        params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
-        )
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 0
+            y = 200
+        }
 
-        params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-        params.y = 120
+        wm.addView(overlayView, params)
 
-        wm.addView(scrollView, params)
+        // DRAG HANDLING (BEST PLACE)
+        overlayView.setOnTouchListener { _, event ->
 
+            val dragHandleHeight = 150f
+
+            when (event.action) {
+
+                MotionEvent.ACTION_DOWN -> {
+                    // only allow drag from top area
+                    if (event.y > dragHandleHeight) return@setOnTouchListener false
+
+                    lastX = event.rawX
+                    lastY = event.rawY
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+
+                    val dx = (event.rawX - lastX).toInt()
+                    val dy = (event.rawY - lastY).toInt()
+
+                    lastX = event.rawX
+                    lastY = event.rawY
+
+                    params.x += dx
+                    params.y += dy
+
+                    wm.updateViewLayout(overlayView, params)
+                    true
+                }
+
+                else -> false
+            }
+        }
+
+        // TEXT UPDATE PIPELINE
         OverlayBridge.update = { text ->
             val raw = text.replace(" ", "")
             val words = segment(raw).filter { it.isNotBlank() }
@@ -59,18 +94,15 @@ class OverlayService : Service() {
                 CedictDictionary.getMeaning(word)
             }
 
-            mainHandler.post {
+            overlayView.post {
                 overlayView.setText(words, meanings)
-                scrollView.fullScroll(HorizontalScrollView.FOCUS_RIGHT)
             }
         }
-
-        Log.i("OVERLAY", "OverlayService ready")
     }
 
     override fun onDestroy() {
         OverlayBridge.update = null
-        wm.removeView(scrollView)
+        wm.removeView(overlayView)
         super.onDestroy()
     }
 
