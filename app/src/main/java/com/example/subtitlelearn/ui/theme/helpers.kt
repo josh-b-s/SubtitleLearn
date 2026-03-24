@@ -1,6 +1,6 @@
 package com.example.subtitlelearn.ui.theme
 
-import com.example.subtitlelearn.CedictDictionary
+import com.example.subtitlelearn.Dictionary
 
 fun segment(text: String): List<String> {
     val result = mutableListOf<String>()
@@ -15,7 +15,7 @@ fun segment(text: String): List<String> {
 
         for (len in maxLen downTo 1) {
             val sub = text.substring(i, i + len)
-            if (CedictDictionary.get(sub).isNotEmpty()) {
+            if (Dictionary.get(sub).isNotEmpty()) {
                 match = sub
                 break
             }

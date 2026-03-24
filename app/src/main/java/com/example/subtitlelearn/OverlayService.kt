@@ -84,7 +84,7 @@ class OverlayService : Service() {
             val words = segment(raw).filter { it.isNotBlank() }
 
             val meanings = words.associateWith { word ->
-                CedictDictionary.getMeaning(word)
+                Dictionary.getMeaning(word)
             }
 
             overlayView.post {
