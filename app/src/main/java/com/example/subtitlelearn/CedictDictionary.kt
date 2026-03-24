@@ -61,18 +61,12 @@ object CedictDictionary {
     }
 
     private fun shortMeaning(def: String): String {
-        // Example: "talk over/to discuss/consult"
 
-        val parts = def.split("/")
-            .map { it.trim() }
+        val parts = def.split("/", ";")
+            .map { it.trim().removePrefix("to ") }
             .filter { it.isNotEmpty() }
 
-        // remove "to " for verbs
-        val cleaned = parts.map {
-            it.removePrefix("to ").trim()
-        }
-
-        // take 1–2 meanings max (prevents overflow)
-        return cleaned.take(2).joinToString("; ")
+        // limit to 2 lines max
+        return parts.take(5).joinToString("\n")
     }
 }
