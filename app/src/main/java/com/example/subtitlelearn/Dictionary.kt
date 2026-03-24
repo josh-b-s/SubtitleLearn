@@ -63,10 +63,18 @@ object Dictionary {
     private fun shortMeaning(def: String): String {
 
         val parts = def.split("/", ";")
-            .map { it.trim().removePrefix("to ") }
+            .map {
+                it.trim()
+                    .lowercase()
+                    .removePrefix("to ")
+                    .replace(Regex("\\s+"), " ")
+            }
             .filter { it.isNotEmpty() }
 
-        // limit to 2 lines max
-        return parts.take(5).joinToString("\n")
+        // remove duplicates while keeping order
+        val unique = LinkedHashSet(parts)
+
+        // limit lines
+        return unique.take(5).joinToString("\n")
     }
 }
