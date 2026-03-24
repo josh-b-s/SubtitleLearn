@@ -166,4 +166,9 @@ class PinyinOverlayView @JvmOverloads constructor(
             y += rowHeight
         }
     }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
+    }
 }

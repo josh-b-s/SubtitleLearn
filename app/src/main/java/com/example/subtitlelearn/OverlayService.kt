@@ -46,21 +46,15 @@ class OverlayService : Service() {
         // DRAG HANDLING (BEST PLACE)
         overlayView.setOnTouchListener { _, event ->
 
-            val dragHandleHeight = 150f
-
             when (event.action) {
 
                 MotionEvent.ACTION_DOWN -> {
-                    // only allow drag from top area
-                    if (event.y > dragHandleHeight) return@setOnTouchListener false
-
                     lastX = event.rawX
                     lastY = event.rawY
                     true
                 }
 
                 MotionEvent.ACTION_MOVE -> {
-
                     val dx = (event.rawX - lastX).toInt()
                     val dy = (event.rawY - lastY).toInt()
 
@@ -69,8 +63,12 @@ class OverlayService : Service() {
 
                     params.x += dx
                     params.y += dy
-
                     wm.updateViewLayout(overlayView, params)
+                    true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    overlayView.performClick()
                     true
                 }
 
