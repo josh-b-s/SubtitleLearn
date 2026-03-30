@@ -17,8 +17,14 @@ import android.os.IBinder
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
-import org.vosk.Model
-import org.vosk.Recognizer
+import com.example.subtitlelearn.overlay.OverlayBridge
+import com.k2fsa.sherpa.onnx.OnlineModelConfig
+import com.k2fsa.sherpa.onnx.OnlineParaformerModelConfig
+import com.k2fsa.sherpa.onnx.OnlineRecognizer
+import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
+import com.k2fsa.sherpa.onnx.OnlineStream
+import com.k2fsa.sherpa.onnx.getEndpointConfig
+import com.k2fsa.sherpa.onnx.getFeatureConfig
 
 class CaptureService : Service() {
 
@@ -27,8 +33,11 @@ class CaptureService : Service() {
     private var audioRecord: AudioRecord? = null
     private var isRecording = false
     private var recordingThread: Thread? = null
-    private var voskModel: Model? = null
-    private var recognizer: Recognizer? = null
+
+    // 🔥 Sherpa
+    private lateinit var recognizer: OnlineRecognizer
+    private lateinit var stream: OnlineStream
+
     private var lastText = ""
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
@@ -56,137 +65,162 @@ class CaptureService : Service() {
         mediaProjection = projectionManager.getMediaProjection(resultCode, data)
         Log.i("CaptureService", "MediaProjection started")
 
+        initSherpa()
         startAudioCapture()
 
         return START_STICKY
     }
 
+    // =========================
+    // 🔥 INIT SHERPA
+    // =========================
+    private fun initSherpa() {
+
+        val config = OnlineRecognizerConfig(
+            featConfig = getFeatureConfig(sampleRate = 16000, featureDim = 80),
+            modelConfig = OnlineModelConfig(
+                paraformer = OnlineParaformerModelConfig(
+                    encoder = "model/encoder.int8.onnx",
+                    decoder = "model/decoder.int8.onnx"
+                ),
+                tokens = "model/tokens.txt",
+                numThreads = 2,
+                provider = "cpu"
+            ),
+            endpointConfig = getEndpointConfig(),
+            enableEndpoint = true
+        )
+
+        recognizer = OnlineRecognizer(assets, config)
+        stream = recognizer.createStream()
+
+        Log.i("SHERPA", "Model initialized")
+    }
+
+    // =========================
+    // 🎤 AUDIO CAPTURE
+    // =========================
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun startAudioCapture() {
 
         val sampleRate = 16000
-        val channelConfig = AudioFormat.CHANNEL_IN_MONO
-        val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
         val bufferSize = AudioRecord.getMinBufferSize(
-            sampleRate, channelConfig, audioFormat
+            sampleRate,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
         )
 
         val projection = mediaProjection ?: return
+
         val config = AudioPlaybackCaptureConfiguration.Builder(projection)
             .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-            .addMatchingUsage(AudioAttributes.USAGE_GAME).build()
+            .addMatchingUsage(AudioAttributes.USAGE_GAME)
+            .build()
 
-        audioRecord = AudioRecord.Builder().setAudioFormat(
-            AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setSampleRate(sampleRate).setChannelMask(AudioFormat.CHANNEL_IN_MONO).build()
-        ).setBufferSizeInBytes(bufferSize * 2).setAudioPlaybackCaptureConfig(config).build()
-
-        Log.i(
-            "CaptureService", "AudioRecord state=${audioRecord?.state}"
-        )
+        audioRecord = AudioRecord.Builder()
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+                    .build()
+            )
+            .setBufferSizeInBytes(bufferSize * 2)
+            .setAudioPlaybackCaptureConfig(config)
+            .build()
 
         if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
             Log.e("CaptureService", "AudioRecord failed to init")
             return
         }
 
-        try {
-            voskModel = ModelLoader.loadModel(this)
-            recognizer = Recognizer(voskModel, 16000.0f)
-            Log.i("VOSK", "Model loaded")
-        } catch (e: Exception) {
-            Log.e("VOSK", "Model failed: ${e.message}")
-        }
-
         audioRecord?.startRecording()
         isRecording = true
 
-        Log.i(
-            "CaptureService", "Recording started state=${audioRecord?.recordingState}"
-        )
+        Log.i("CaptureService", "Recording started")
 
         recordingThread = Thread {
-            val shortBuffer = ShortArray(bufferSize * 2)
-
-            while (isRecording) {
-                try {
-                    val read = audioRecord!!.read(shortBuffer, 0, shortBuffer.size)
-
-                    if (read > 0) {
-                        if (System.currentTimeMillis() % 2000 < 50) {
-                            Log.i("AudioDebug", "audio alive size=$read sample=${shortBuffer[0]}")
-                        }
-
-                        val byteBuffer = ByteArray(read * 2)
-
-                        var i = 0
-                        for (index in 0 until read) {
-                            val s = shortBuffer[index]
-                            byteBuffer[i++] = (s.toInt() and 0xFF).toByte()
-                            byteBuffer[i++] = ((s.toInt() shr 8) and 0xFF).toByte()
-                        }
-
-                        sendToSpeech(byteBuffer)
-                    }
-                } catch (e: Exception) {
-                    Log.e("CaptureService", "Audio read crash: ${e.message}")
-                    break
-                }
-            }
+            processAudio()
         }
         recordingThread?.start()
     }
 
+    // =========================
+    // 🧠 SHERPA PROCESSING LOOP
+    // =========================
+    private fun processAudio() {
+
+        val sampleRate = 16000
+        val buffer = ShortArray((0.1 * sampleRate).toInt()) // 100ms chunks
+
+        while (isRecording) {
+            try {
+                val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
+
+                if (read > 0) {
+
+                    // Convert to float
+                    val samples = FloatArray(read) {
+                        buffer[it] / 32768f
+                    }
+
+                    stream.acceptWaveform(samples, sampleRate)
+
+                    while (recognizer.isReady(stream)) {
+                        recognizer.decode(stream)
+                    }
+
+                    val text = recognizer.getResult(stream).text
+
+                    // 🔥 Only send if changed
+                    if (text.isNotBlank() && text != lastText) {
+                        lastText = text
+                        OverlayBridge.update?.invoke(text)
+                    }
+
+                    if (recognizer.isEndpoint(stream)) {
+                        recognizer.reset(stream)
+                    }
+                }
+
+            } catch (e: Exception) {
+                Log.e("CaptureService", "Audio loop crash: ${e.message}")
+                break
+            }
+        }
+
+        stream.release()
+    }
+
+    // =========================
+    // 🔔 NOTIFICATION
+    // =========================
     private fun createNotification(): Notification {
+
         val channelId = "capture_channel"
 
         val channel = NotificationChannel(
-            channelId, "Capture Service", NotificationManager.IMPORTANCE_LOW
+            channelId,
+            "Capture Service",
+            NotificationManager.IMPORTANCE_LOW
         )
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
 
-        return NotificationCompat.Builder(this, channelId).setContentTitle("Live Transcription")
-            .setContentText("Recording audio...").setSmallIcon(R.mipmap.ic_launcher).build()
+        getSystemService(NotificationManager::class.java)
+            .createNotificationChannel(channel)
+
+        return NotificationCompat.Builder(this, channelId)
+            .setContentTitle("Live Transcription")
+            .setContentText("Recording audio...")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .build()
     }
 
-    private fun sendToSpeech(byteBuffer: ByteArray) {
-        val rec = recognizer
-        if (rec == null) {
-            //Log.e("PIPELINE", "Recognizer is NULL")
-            return
-        }
-
-        val isFinal = rec.acceptWaveForm(byteBuffer, byteBuffer.size)
-        val json = if (isFinal) rec.result else rec.partialResult
-
-        //Log.i("PIPELINE_RAW", json)
-
-        val text = extractText(json)
-
-        //Log.i("PIPELINE_TEXT", "extracted='$text'")
-
-        if (text.isNotBlank() && text != lastText) {
-            lastText = text
-            Log.i("PIPELINE_SEND", "sending='$text'")
-            OverlayBridge.update?.invoke(text)
-        }
-    }
-
-    private fun extractText(json: String): String {
-        return try {
-            val obj = org.json.JSONObject(json)
-            when {
-                obj.has("text") -> obj.getString("text")
-                obj.has("partial") -> obj.getString("partial")
-                else -> ""
-            }
-        } catch (e: Exception) {
-            ""
-        }
-    }
-
+    // =========================
+    // 🧹 CLEANUP
+    // =========================
     override fun onDestroy() {
+
         isRecording = false
 
         recordingThread?.interrupt()
@@ -199,13 +233,7 @@ class CaptureService : Service() {
         mediaProjection?.stop()
         mediaProjection = null
 
-        recognizer?.close()
-        recognizer = null
-
-        voskModel?.close()
-        voskModel = null
-
-        Log.i("CaptureService", "Service destroyed, recording stopped")
+        Log.i("CaptureService", "Service destroyed")
 
         super.onDestroy()
     }
