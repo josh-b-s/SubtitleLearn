@@ -13,7 +13,7 @@ fun segment(text: String): List<String> {
 
         for (len in maxLen downTo 1) {
             val sub = text.substring(i, i + len)
-            if (Dictionary.get(sub).isNotEmpty()) {
+            if (Dictionary.getMeaning(sub).isNotEmpty()) {
                 match = sub
                 break
             }

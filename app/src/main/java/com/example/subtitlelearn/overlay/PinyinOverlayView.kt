@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
+import com.example.subtitlelearn.Dictionary
 import com.github.promeg.pinyinhelper.Pinyin
 
 class PinyinOverlayView @JvmOverloads constructor(
@@ -32,7 +33,8 @@ class PinyinOverlayView @JvmOverloads constructor(
 
         val wordCells = mutableListOf<Pair<List<Pair<String, String>>, String>>()
         for (word in words) {
-            val pinyinList = Pinyin.toPinyin(word, " ").lowercase().split(" ")
+            val pinyin = Dictionary.getPinyin(word)
+            val pinyinList = pinyin.split(" ")
             val meaningRaw = meanings[word] ?: ""
 
             val meaning = meaningRaw

@@ -5,7 +5,7 @@ import android.util.Log
 
 object Dictionary {
 
-    private val dictionary = HashMap<String, String>()
+    private val dictionary = HashMap<String, Pair<String, String>>()
 
     fun load(context: Context) {
         if (dictionary.isNotEmpty()) return
@@ -20,15 +20,14 @@ object Dictionary {
 
                         val parts = line.split("\t")
 
-                        if (parts.size < 2) return@forEach
+                        if (parts.size < 3) return@forEach
 
                         val word = parts[0].trim()
-                        val defRaw = parts.last().trim()
+                        val meaning = shortMeaning(parts[1].trim())
+                        val pinyin = parts[2].trim()
 
-                        val shortMeaning = shortMeaning(defRaw)
-
-                        if (shortMeaning.isNotEmpty()) {
-                            dictionary[word] = shortMeaning
+                        if (meaning.isNotEmpty()) {
+                            dictionary[word] = Pair(meaning, pinyin)
                         }
                     }
                 }
@@ -40,24 +39,12 @@ object Dictionary {
         }
     }
 
-    fun get(word: String): String {
-        return dictionary[word] ?: ""
+    fun getMeaning(word: String): String {
+        return dictionary[word]?.first ?: ""
     }
 
-    fun getMeaning(word: String): String {
-
-        // exact match first
-        val direct = get(word)
-        if (direct.isNotEmpty()) return direct
-
-        // try shorter substrings
-        for (i in word.length - 1 downTo 1) {
-            val sub = word.substring(0, i)
-            val m = get(sub)
-            if (m.isNotEmpty()) return m
-        }
-
-        return ""
+    fun getPinyin(word: String): String {
+        return dictionary[word]?.second ?: ""
     }
 
     private fun shortMeaning(def: String): String {
