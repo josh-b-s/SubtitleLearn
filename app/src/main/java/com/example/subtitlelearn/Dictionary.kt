@@ -26,7 +26,7 @@ object Dictionary {
                         val meaning = shortMeaning(parts[1].trim())
                         val pinyin = parts[2].trim()
 
-                        if (meaning.isNotEmpty()) {
+                        if (meaning.isNotEmpty() && !dictionary.containsKey(word)) {
                             dictionary[word] = Pair(meaning, pinyin)
                         }
                     }
