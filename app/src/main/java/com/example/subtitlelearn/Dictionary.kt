@@ -19,12 +19,12 @@ object Dictionary {
                         if (line.isBlank()) return@forEach
 
                         val parts = line.split("\t")
-
-                        if (parts.size < 3) return@forEach
+                        if (parts.size < 2) return@forEach
 
                         val word = parts[0].trim()
                         val meaning = shortMeaning(parts[1].trim())
-                        val pinyin = parts[2].trim()
+
+                        val pinyin = if (parts.size >= 3) parts[2].trim() else ""
 
                         if (meaning.isNotEmpty() && !dictionary.containsKey(word)) {
                             dictionary[word] = Pair(meaning, pinyin)
