@@ -11,7 +11,7 @@ object Dictionary {
         if (dictionary.isNotEmpty()) return
 
         try {
-            context.assets.open("PD-English-Definitions.tsv")
+            context.assets.open("dictionaries/zh-en.tsv")
                 .bufferedReader()
                 .useLines { lines ->
 
