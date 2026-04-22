@@ -49,19 +49,17 @@ object Dictionary {
 
     private fun shortMeaning(def: String): String {
 
-        val parts = def.split("/", ";")
+        val parts = def.split(Regex("\\s*[/;|,•·]\\s*|\\s+-\\s+"))
             .map {
                 it.trim()
                     .lowercase()
                     .removePrefix("to ")
-                    .replace(Regex("\\s+"), " ")
+                    .replace(Regex("\\(.*?\\)"), "")
             }
             .filter { it.isNotEmpty() }
 
-        // remove duplicates while keeping order
         val unique = LinkedHashSet(parts)
 
-        // limit lines
-        return unique.take(5).joinToString("\n")
+        return unique.take(3).joinToString("\n")
     }
 }

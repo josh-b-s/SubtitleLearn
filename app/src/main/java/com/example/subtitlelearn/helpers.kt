@@ -1,10 +1,19 @@
 package com.example.subtitlelearn
 
 fun segment(text: String): List<String> {
+
+    // CASE 1: text contains spaces → fast path
+    if (text.contains(" ")) {
+        return text.split(" ")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+    }
+
+    // CASE 2: no spaces → use your existing logic (Chinese)
     val result = mutableListOf<String>()
     var i = 0
 
-    val maxWordLen = 6 // typical Chinese word max length
+    val maxWordLen = 6
 
     while (i < text.length) {
         var match: String? = null
@@ -23,7 +32,6 @@ fun segment(text: String): List<String> {
             result.add(match)
             i += match.length
         } else {
-            // fallback: single char
             result.add(text[i].toString())
             i++
         }
