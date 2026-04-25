@@ -79,8 +79,7 @@ class OverlayService : Service() {
 
         // TEXT UPDATE PIPELINE
         OverlayBridge.update = { text ->
-            val raw = text.replace(" ", "")
-            val words = segment(raw).filter { it.isNotBlank() }
+            val words = segment(text).filter { it.isNotBlank() }
 
             val meanings = words.associateWith { word ->
                 Dictionary.getMeaning(word)
