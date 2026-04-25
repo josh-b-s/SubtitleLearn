@@ -7,7 +7,6 @@ import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
 import com.example.subtitlelearn.Dictionary
-import com.github.promeg.pinyinhelper.Pinyin
 
 class PinyinOverlayView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
@@ -25,62 +24,45 @@ class PinyinOverlayView @JvmOverloads constructor(
 
     private val spacing = 12f
 
-    // Lines: each line is a list of words
-    // Each word: Pair<List<Pair<pinyin, hanzi>>, meaning>
-    private var lines: MutableList<List<Pair<List<Pair<String, String>>, String>>> = mutableListOf()
+    private var lines = mutableListOf<List<Pair<List<Pair<String, String>>, String>>>()
 
     fun setText(words: List<String>, meanings: Map<String, String>) {
+        val wordCells = words.map { word ->
+            val pinyinList = Dictionary.getPinyin(word).split(" ")
+            val meaning = meanings[word].orEmpty()
 
-        val wordCells = mutableListOf<Pair<List<Pair<String, String>>, String>>()
-        for (word in words) {
-            val pinyin = Dictionary.getPinyin(word)
-            val pinyinList = pinyin.split(" ")
-            val meaningRaw = meanings[word] ?: ""
-
-            val meaning = meaningRaw
-                .split("/", ";")
-                .map { it.trim().removePrefix("to ") }
-                .filter { it.isNotEmpty() }
-                .take(2)
-                .joinToString("\n")
-
-            val characters = mutableListOf<Pair<String, String>>()
-            for (i in word.indices) {
-                val py = if (i < pinyinList.size) pinyinList[i] else ""
-                val ch = word[i].toString()
-                characters.add(Pair(py, ch))
+            val chars = word.mapIndexed { i, ch ->
+                (pinyinList.getOrNull(i).orEmpty()) to ch.toString()
             }
 
-            wordCells.add(Pair(characters, meaning))
+            chars to meaning
         }
 
-        // Wrap words into lines
         lines.clear()
-        val maxWidth = width - paddingLeft - paddingRight - spacing
+
+        val maxWidth = (width - paddingLeft - paddingRight - spacing).toFloat()
         var currentLine = mutableListOf<Pair<List<Pair<String, String>>, String>>()
         var currentWidth = 0f
 
         for ((chars, meaning) in wordCells) {
-            var wordWidth = 0f
-            for ((py, ch) in chars) {
-                wordWidth += maxOf(pinyinPaint.measureText(py), textPaint.measureText(ch)) + spacing
-            }
+            val wordWidth = chars.sumOf {
+                maxOf(
+                    pinyinPaint.measureText(it.first),
+                    textPaint.measureText(it.second)
+                ).toDouble()
+            }.toFloat() + spacing * chars.size
 
-            // Reserve space for meaning: check width of meaning text
-            val meaningWidth = if (meaning.isNotEmpty()) {
-                meaning.split("\n")
-                    .maxOfOrNull { textPaint.measureText(it) } ?: 0f
-            } else 0f
-            val totalWordWidth = maxOf(wordWidth, meaningWidth)
+            val meaningWidth = if (meaning.isNotEmpty()) textPaint.measureText(meaning) else 0f
+            val totalWidth = maxOf(wordWidth, meaningWidth)
 
-            if (currentWidth + totalWordWidth > maxWidth) {
+            if (currentWidth + totalWidth > maxWidth && currentLine.isNotEmpty()) {
                 lines.add(currentLine)
                 currentLine = mutableListOf()
                 currentWidth = 0f
             }
 
-            currentLine.add(Pair(chars, meaning))
-            currentWidth += totalWordWidth
+            currentLine.add(chars to meaning)
+            currentWidth += totalWidth + spacing
         }
 
         if (currentLine.isNotEmpty()) lines.add(currentLine)
@@ -90,26 +72,15 @@ class PinyinOverlayView @JvmOverloads constructor(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-
-        val width = resources.displayMetrics.widthPixels
+        val width = MeasureSpec.getSize(widthMeasureSpec).takeIf { it > 0 }
+            ?: resources.displayMetrics.widthPixels
 
         var totalHeight = spacing
 
         for (line in lines) {
-
-            // Find max number of meaning lines in this row
-            val maxMeaningLines = line.maxOf { (_, meaning) ->
-                if (meaning.isEmpty()) 0 else meaning.split("\n").size
-            }
-
-            val rowHeight =
-                pinyinPaint.textSize +                  // pinyin
-                        textPaint.textSize +                    // hanzi
-                        (textPaint.textSize * maxMeaningLines) +// meanings
-                        spacing * (3 + maxMeaningLines)         // spacing gaps
-
-            totalHeight += rowHeight
+            totalHeight += rowHeight(line)
         }
+
         totalHeight += spacing * 2
         setMeasuredDimension(width, totalHeight.toInt())
     }
@@ -123,11 +94,14 @@ class PinyinOverlayView @JvmOverloads constructor(
             var x = spacing
 
             for ((chars, meaning) in line) {
-                val wordStartX = x
+                val startX = x
                 var wordWidth = 0f
 
                 for ((py, ch) in chars) {
-                    val charWidth = maxOf(pinyinPaint.measureText(py), textPaint.measureText(ch))
+                    val charWidth = maxOf(
+                        pinyinPaint.measureText(py),
+                        textPaint.measureText(ch)
+                    )
                     canvas.drawText(py, x, y, pinyinPaint)
                     canvas.drawText(ch, x, y + spacing + textPaint.textSize, textPaint)
                     x += charWidth + spacing
@@ -135,38 +109,24 @@ class PinyinOverlayView @JvmOverloads constructor(
                 }
 
                 if (meaning.isNotEmpty()) {
+                    val meaningY = y + spacing * 2 + textPaint.textSize * 2
+                    canvas.drawText(meaning, startX, meaningY, textPaint)
 
-                    val lines = meaning.split("\n")
-
-                    var my = y + spacing * 2 + textPaint.textSize * 2
-
-                    for (line in lines) {
-                        canvas.drawText(line, wordStartX, my, textPaint)
-                        my += textPaint.textSize + spacing
-                    }
-                    val meaningWidth = if (meaning.isNotEmpty()) {
-                        meaning.split("\n").maxOf { textPaint.measureText(it) }
-                    } else 0f
-
-                    x = wordStartX + maxOf(wordWidth, meaningWidth + spacing)
+                    val meaningWidth = textPaint.measureText(meaning)
+                    x = startX + maxOf(wordWidth, meaningWidth + spacing)
                 }
             }
 
-            val maxMeaningLines = line.maxOf {
-                if (it.second.isEmpty()) 0 else it.second.split("\n").size
-            }
-
-            val rowHeight =
-                pinyinPaint.textSize +             // pinyin
-                        spacing +
-                        textPaint.textSize +               // hanzi
-                        spacing +
-                        (textPaint.textSize * maxMeaningLines) + // meanings
-                        spacing * (1 + maxMeaningLines) +  // spacing between meanings
-                        spacing                            // bottom padding
-
-            y += rowHeight
+            y += rowHeight(line)
         }
+    }
+
+    private fun rowHeight(line: List<Pair<List<Pair<String, String>>, String>>): Float {
+        val maxMeaningLines = if (line.any { it.second.isNotEmpty() }) 1 else 0
+        return pinyinPaint.textSize +
+                textPaint.textSize +
+                textPaint.textSize * maxMeaningLines +
+                spacing * 5
     }
 
     override fun performClick(): Boolean {

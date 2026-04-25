@@ -33,8 +33,7 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -44,46 +43,32 @@ class OverlayService : Service() {
 
         wm.addView(overlayView, params)
 
-        // DRAG HANDLING (BEST PLACE)
         overlayView.setOnTouchListener { _, event ->
-
             when (event.action) {
-
                 MotionEvent.ACTION_DOWN -> {
                     lastX = event.rawX
                     lastY = event.rawY
                     true
                 }
-
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = (event.rawX - lastX).toInt()
-                    val dy = (event.rawY - lastY).toInt()
-
+                    params.x += (event.rawX - lastX).toInt()
+                    params.y += (event.rawY - lastY).toInt()
                     lastX = event.rawX
                     lastY = event.rawY
-
-                    params.x += dx
-                    params.y += dy
                     wm.updateViewLayout(overlayView, params)
                     true
                 }
-
                 MotionEvent.ACTION_UP -> {
                     overlayView.performClick()
                     true
                 }
-
                 else -> false
             }
         }
 
-        // TEXT UPDATE PIPELINE
         OverlayBridge.update = { text ->
             val words = segment(text).filter { it.isNotBlank() }
-
-            val meanings = words.associateWith { word ->
-                Dictionary.getMeaning(word)
-            }
+            val meanings = words.associateWith { Dictionary.getMeaning(it) }
 
             overlayView.post {
                 overlayView.setText(words, meanings)
