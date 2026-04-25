@@ -22,6 +22,21 @@ class PinyinOverlayView @JvmOverloads constructor(
         textSize = 35f
     }
 
+    private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(180, 0, 0, 0)
+        style = Paint.Style.FILL
+    }
+
+    private val boxStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(90, 255, 255, 255)
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+    }
+
+    private val boxRadius = 18f
+    private val boxPadding = 12f
+    private val wordGap = 20f
+
     private val spacing = 12f
 
     private var lines = mutableListOf<List<Pair<List<Pair<String, String>>, String>>>()
@@ -52,7 +67,7 @@ class PinyinOverlayView @JvmOverloads constructor(
                 ).toDouble()
             }.toFloat() + spacing * chars.size
 
-            val meaningWidth = if (meaning.isNotEmpty()) textPaint.measureText(meaning) else 0f
+            val meaningWidth = if (meaning.isNotEmpty()) textPaint.measureText(meaning) + spacing else 0f
             val totalWidth = maxOf(wordWidth, meaningWidth)
 
             if (currentWidth + totalWidth > maxWidth && currentLine.isNotEmpty()) {
@@ -62,7 +77,7 @@ class PinyinOverlayView @JvmOverloads constructor(
             }
 
             currentLine.add(chars to meaning)
-            currentWidth += totalWidth + spacing
+            currentWidth += totalWidth + wordGap
         }
 
         if (currentLine.isNotEmpty()) lines.add(currentLine)
@@ -95,8 +110,46 @@ class PinyinOverlayView @JvmOverloads constructor(
 
             for ((chars, meaning) in line) {
                 val startX = x
-                var wordWidth = 0f
+                val hasMeaning = meaning.isNotEmpty()
 
+                // Calculate wordWidth first, before using it for the box
+                val wordWidth = chars.sumOf { (py, ch) ->
+                    maxOf(
+                        pinyinPaint.measureText(py),
+                        textPaint.measureText(ch)
+                    ).toDouble()
+                }.toFloat() + spacing * chars.size
+
+                val meaningWidth = if (hasMeaning) textPaint.measureText(meaning) + spacing else 0f
+                val blockWidth = maxOf(wordWidth, meaningWidth)
+
+                // Box height accounts for: pinyin row + char row + optional meaning row + spacing
+                val blockHeight = pinyinPaint.textSize +
+                        textPaint.textSize +
+                        (if (hasMeaning) textPaint.textSize + spacing else 0f) +
+                        spacing * 3
+
+                val boxTop = y - pinyinPaint.textSize - boxPadding
+                val boxBottom = boxTop + blockHeight + boxPadding * 2
+
+                canvas.drawRoundRect(
+                    startX - boxPadding,
+                    boxTop,
+                    startX + blockWidth + boxPadding,
+                    boxBottom,
+                    boxRadius, boxRadius,
+                    boxPaint
+                )
+                canvas.drawRoundRect(
+                    startX - boxPadding,
+                    boxTop,
+                    startX + blockWidth + boxPadding,
+                    boxBottom,
+                    boxRadius, boxRadius,
+                    boxStrokePaint
+                )
+
+                // Draw pinyin on row 1, character on row 2
                 for ((py, ch) in chars) {
                     val charWidth = maxOf(
                         pinyinPaint.measureText(py),
@@ -105,16 +158,16 @@ class PinyinOverlayView @JvmOverloads constructor(
                     canvas.drawText(py, x, y, pinyinPaint)
                     canvas.drawText(ch, x, y + spacing + textPaint.textSize, textPaint)
                     x += charWidth + spacing
-                    wordWidth += charWidth + spacing
                 }
 
-                if (meaning.isNotEmpty()) {
+                // Draw meaning on row 3, inside the box
+                if (hasMeaning) {
                     val meaningY = y + spacing * 2 + textPaint.textSize * 2
                     canvas.drawText(meaning, startX, meaningY, textPaint)
-
-                    val meaningWidth = textPaint.measureText(meaning)
-                    x = startX + maxOf(wordWidth, meaningWidth + spacing)
                 }
+
+                // Advance x past the full block width
+                x = startX + blockWidth + wordGap
             }
 
             y += rowHeight(line)

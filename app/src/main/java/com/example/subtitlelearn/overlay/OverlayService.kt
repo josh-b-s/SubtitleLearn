@@ -25,7 +25,6 @@ class OverlayService : Service() {
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
         overlayView = PinyinOverlayView(this).apply {
-            setBackgroundColor(0xCC000000.toInt())
             setPadding(24, 16, 24, 16)
         }
 
