@@ -7,32 +7,48 @@ import android.os.IBinder
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
+import com.example.subtitlelearn.AppRepository
 import com.example.subtitlelearn.Dictionary
-import com.example.subtitlelearn.segment
+import com.example.subtitlelearn.Dictionary.segment
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 
+/**
+ * Manages the overlay window lifecycle and routes transcription text to PinyinOverlayView.
+ * Collects from AppRepository.transcription — no direct coupling to CaptureService.
+ */
 class OverlayService : Service() {
 
     private lateinit var wm: WindowManager
     private lateinit var params: WindowManager.LayoutParams
     private lateinit var overlayView: PinyinOverlayView
 
-    private var lastX = 0f
-    private var lastY = 0f
+    // Main dispatcher so setText() is always called on the UI thread
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    private var downX = 0f
+    private var downY = 0f
+    private var dragged = false
+
+    companion object {
+        private const val DRAG_THRESHOLD_PX = 12f
+    }
 
     override fun onCreate() {
         super.onCreate()
 
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
-
-        overlayView = PinyinOverlayView(this).apply {
-            setPadding(24, 16, 24, 16)
-        }
+        overlayView = PinyinOverlayView(this).apply { setPadding(24, 16, 24, 16) }
 
         params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -41,42 +57,59 @@ class OverlayService : Service() {
         }
 
         wm.addView(overlayView, params)
+        setupTouchHandler()
+        collectTranscription()
+    }
 
+    private fun setupTouchHandler() {
         overlayView.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    lastX = event.rawX
-                    lastY = event.rawY
+                    downX = event.rawX
+                    downY = event.rawY
+                    dragged = false
                     true
                 }
+
                 MotionEvent.ACTION_MOVE -> {
-                    params.x += (event.rawX - lastX).toInt()
-                    params.y += (event.rawY - lastY).toInt()
-                    lastX = event.rawX
-                    lastY = event.rawY
-                    wm.updateViewLayout(overlayView, params)
+                    val dx = event.rawX - downX
+                    val dy = event.rawY - downY
+                    if (!dragged && (abs(dx) > DRAG_THRESHOLD_PX || abs(dy) > DRAG_THRESHOLD_PX)) {
+                        dragged = true
+                    }
+                    if (dragged) {
+                        params.x += dx.toInt()
+                        params.y += dy.toInt()
+                        downX = event.rawX
+                        downY = event.rawY
+                        wm.updateViewLayout(overlayView, params)
+                    }
                     true
                 }
+
                 MotionEvent.ACTION_UP -> {
-                    overlayView.performClick()
+                    if (!dragged) overlayView.performClick()
                     true
                 }
+
                 else -> false
             }
         }
+    }
 
-        OverlayBridge.update = { text ->
-            val words = segment(text).filter { it.isNotBlank() }
-            val meanings = words.associateWith { Dictionary.getMeaning(it) }
-
-            overlayView.post {
+    private fun collectTranscription() {
+        scope.launch {
+            AppRepository.transcription.collect { text ->
+                val words = segment(text).filter { it.isNotBlank() }
+                val meanings = words.associateWith { Dictionary.getMeaning(it) }
+                // Safe to call directly — scope is Dispatchers.Main
                 overlayView.setText(words, meanings)
             }
         }
     }
 
     override fun onDestroy() {
-        OverlayBridge.update = null
+        scope.cancel()
         wm.removeView(overlayView)
         super.onDestroy()
     }

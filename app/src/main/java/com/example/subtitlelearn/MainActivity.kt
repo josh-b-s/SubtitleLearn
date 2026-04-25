@@ -4,25 +4,37 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.provider.Settings
-import android.util.Log
 import android.widget.Button
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.example.subtitlelearn.overlay.OverlayService
 
-
 class MainActivity : AppCompatActivity() {
-    private lateinit var projectionManager: MediaProjectionManager
-    private val REQ_CAPTURE = 1001
+
+    private val projectionManager by lazy {
+        getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+    }
+
+    private val captureRequest =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == RESULT_OK && result.data != null) {
+                startService(Intent(this, OverlayService::class.java))
+                ContextCompat.startForegroundService(
+                    this,
+                    Intent(this, CaptureService::class.java).apply {
+                        putExtra("resultCode", result.resultCode)
+                        putExtra("data", result.data)
+                    }
+                )
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         Dictionary.load(this)
-
-        projectionManager =
-            getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
         findViewById<Button>(R.id.startBtn).setOnClickListener {
             if (!Settings.canDrawOverlays(this)) {
@@ -34,11 +46,7 @@ class MainActivity : AppCompatActivity() {
                 )
                 return@setOnClickListener
             }
-
-            startActivityForResult(
-                projectionManager.createScreenCaptureIntent(),
-                REQ_CAPTURE
-            )
+            captureRequest.launch(projectionManager.createScreenCaptureIntent())
         }
 
         findViewById<Button>(R.id.stopBtn).setOnClickListener {
@@ -46,29 +54,4 @@ class MainActivity : AppCompatActivity() {
             stopService(Intent(this, OverlayService::class.java))
         }
     }
-
-    override fun onActivityResult(
-        requestCode: Int,
-        resultCode: Int,
-        data: Intent?
-    ) {
-        super.onActivityResult(requestCode, resultCode, data)
-
-        Log.i("MainActivity", "onActivityResult resultCode=$resultCode dataNull=${data == null}")
-
-        if (requestCode == REQ_CAPTURE &&
-            resultCode == RESULT_OK &&
-            data != null
-        ) {
-            startService(Intent(this, OverlayService::class.java))
-
-            val intent = Intent(this, CaptureService::class.java).apply {
-                putExtra("resultCode", resultCode)
-                putExtra("data", data)
-            }
-
-            ContextCompat.startForegroundService(this, intent)
-        }
-    }
-
 }

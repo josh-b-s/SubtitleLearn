@@ -17,224 +17,153 @@ import android.os.IBinder
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
-import com.example.subtitlelearn.overlay.OverlayBridge
-import com.k2fsa.sherpa.onnx.OnlineModelConfig
-import com.k2fsa.sherpa.onnx.OnlineParaformerModelConfig
-import com.k2fsa.sherpa.onnx.OnlineRecognizer
-import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
-import com.k2fsa.sherpa.onnx.OnlineStream
-import com.k2fsa.sherpa.onnx.getEndpointConfig
-import com.k2fsa.sherpa.onnx.getFeatureConfig
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
+/**
+ * Responsibilities: Android Service lifecycle, MediaProjection, AudioRecord.
+ * STT logic lives in SttEngine. Results go to AppRepository.
+ */
 class CaptureService : Service() {
 
     private lateinit var projectionManager: MediaProjectionManager
     private var mediaProjection: MediaProjection? = null
     private var audioRecord: AudioRecord? = null
-    private var isRecording = false
-    private var recordingThread: Thread? = null
+    private var sttEngine: SttEngine? = null
 
-    // 🔥 Sherpa
-    private lateinit var recognizer: OnlineRecognizer
-    private lateinit var stream: OnlineStream
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    private var lastText = ""
+    companion object {
+        private const val TAG = "CaptureService"
+        private const val NOTIFICATION_ID = 1
+        private const val CHANNEL_ID = "capture_channel"
+    }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-
-        if (isRecording) {
-            Log.i("CaptureService", "Already recording")
-            return START_STICKY
-        }
+        if (sttEngine != null) return START_STICKY  // already running
 
         projectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
-        val resultCode =
-            intent?.getIntExtra("resultCode", Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
+        val resultCode = intent?.getIntExtra("resultCode", Activity.RESULT_CANCELED)
+            ?: Activity.RESULT_CANCELED
         val data = intent?.getParcelableExtra<Intent>("data")
 
         if (resultCode != Activity.RESULT_OK || data == null) {
-            Log.e("CaptureService", "Projection permission missing")
+            Log.e(TAG, "Missing projection permission")
             stopSelf()
             return START_NOT_STICKY
         }
 
-        startForeground(1, createNotification())
-
+        startForeground(NOTIFICATION_ID, createNotification())
         mediaProjection = projectionManager.getMediaProjection(resultCode, data)
-        Log.i("CaptureService", "MediaProjection started")
 
-        initSherpa()
-        startAudioCapture()
+        val record = buildAudioRecord() ?: run {
+            Log.e(TAG, "AudioRecord failed to initialise")
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
+        audioRecord = record
+        sttEngine = SttEngine(assets)
+        record.startRecording()
+
+        scope.launch { runCaptureLoop(record) }
+        Log.i(TAG, "Started")
         return START_STICKY
     }
 
-    // =========================
-    // 🔥 INIT SHERPA
-    // =========================
-    private fun initSherpa() {
-
-        val config = OnlineRecognizerConfig(
-            featConfig = getFeatureConfig(sampleRate = 16000, featureDim = 80),
-            modelConfig = OnlineModelConfig(
-                paraformer = OnlineParaformerModelConfig(
-                    encoder = "model/encoder.int8.onnx",
-                    decoder = "model/decoder.int8.onnx"
-                ),
-                tokens = "model/tokens.txt",
-                numThreads = 2,
-                provider = "cpu"
-            ),
-            endpointConfig = getEndpointConfig(),
-            enableEndpoint = true
-        )
-
-        recognizer = OnlineRecognizer(assets, config)
-        stream = recognizer.createStream()
-
-        Log.i("SHERPA", "Model initialized")
-    }
-
-    // =========================
-    // 🎤 AUDIO CAPTURE
-    // =========================
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    private fun startAudioCapture() {
-
-        val sampleRate = 16000
+    private fun buildAudioRecord(): AudioRecord? {
+        val projection = mediaProjection ?: return null
 
         val bufferSize = AudioRecord.getMinBufferSize(
-            sampleRate,
+            SttEngine.SAMPLE_RATE,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT
         )
 
-        val projection = mediaProjection ?: return
-
-        val config = AudioPlaybackCaptureConfiguration.Builder(projection)
+        val captureConfig = AudioPlaybackCaptureConfiguration.Builder(projection)
             .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
             .addMatchingUsage(AudioAttributes.USAGE_GAME)
             .build()
 
-        audioRecord = AudioRecord.Builder()
+        return AudioRecord.Builder()
             .setAudioFormat(
                 AudioFormat.Builder()
                     .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(sampleRate)
+                    .setSampleRate(SttEngine.SAMPLE_RATE)
                     .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
                     .build()
             )
             .setBufferSizeInBytes(bufferSize * 2)
-            .setAudioPlaybackCaptureConfig(config)
+            .setAudioPlaybackCaptureConfig(captureConfig)
             .build()
-
-        if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-            Log.e("CaptureService", "AudioRecord failed to init")
-            return
-        }
-
-        audioRecord?.startRecording()
-        isRecording = true
-
-        Log.i("CaptureService", "Recording started")
-
-        recordingThread = Thread {
-            processAudio()
-        }
-        recordingThread?.start()
+            .takeIf { it.state == AudioRecord.STATE_INITIALIZED }
     }
 
-    // =========================
-    // 🧠 SHERPA PROCESSING LOOP
-    // =========================
-    private fun processAudio() {
+    private suspend fun runCaptureLoop(record: AudioRecord) {
+        val engine = sttEngine ?: return
+        val buffer = ShortArray((0.1 * SttEngine.SAMPLE_RATE).toInt()) // 100ms chunks
+        var lastText = ""
 
-        val sampleRate = 16000
-        val buffer = ShortArray((0.1 * sampleRate).toInt()) // 100ms chunks
+        try {
+            while (currentCoroutineContext().isActive) {
+                val read = record.read(buffer, 0, buffer.size)
+                if (read <= 0) continue
 
-        while (isRecording) {
-            try {
-                val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
+                val samples = FloatArray(read) { buffer[it] / 32768f }
+                val text = engine.process(samples)
 
-                if (read > 0) {
-
-                    // Convert to float
-                    val samples = FloatArray(read) {
-                        buffer[it] / 32768f
-                    }
-
-                    stream.acceptWaveform(samples, sampleRate)
-
-                    while (recognizer.isReady(stream)) {
-                        recognizer.decode(stream)
-                    }
-
-                    val text = recognizer.getResult(stream).text
-
-                    // 🔥 Only send if changed
-                    if (text.isNotBlank() && text != lastText) {
-                        lastText = text
-                        OverlayBridge.update?.invoke(text)
-                    }
-
-                    if (recognizer.isEndpoint(stream)) {
-                        recognizer.reset(stream)
-                    }
+                if (text.isNotBlank() && text != lastText) {
+                    lastText = text
+                    AppRepository.emitTranscription(text)
                 }
 
-            } catch (e: Exception) {
-                Log.e("CaptureService", "Audio loop crash: ${e.message}")
-                break
+                if (engine.isEndpoint()) {
+                    engine.reset()
+                    lastText = "" // allow same phrase to reappear after a pause
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Capture loop failed: ${e.message}")
+            withContext(Dispatchers.Main) { stopSelf() }
+        } finally {
+            engine.release()
         }
-
-        stream.release()
     }
 
-    // =========================
-    // 🔔 NOTIFICATION
-    // =========================
     private fun createNotification(): Notification {
-
-        val channelId = "capture_channel"
-
-        val channel = NotificationChannel(
-            channelId,
-            "Capture Service",
-            NotificationManager.IMPORTANCE_LOW
-        )
-
         getSystemService(NotificationManager::class.java)
-            .createNotificationChannel(channel)
-
-        return NotificationCompat.Builder(this, channelId)
+            .createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "Capture Service",
+                    NotificationManager.IMPORTANCE_LOW
+                )
+            )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Live Transcription")
-            .setContentText("Recording audio...")
+            .setContentText("Recording audio…")
             .setSmallIcon(R.mipmap.ic_launcher)
             .build()
     }
 
-    // =========================
-    // 🧹 CLEANUP
-    // =========================
     override fun onDestroy() {
-
-        isRecording = false
-
-        recordingThread?.interrupt()
-        recordingThread = null
-
+        scope.cancel()
         audioRecord?.stop()
         audioRecord?.release()
         audioRecord = null
-
         mediaProjection?.stop()
         mediaProjection = null
-
-        Log.i("CaptureService", "Service destroyed")
-
+        sttEngine = null
+        Log.i(TAG, "Destroyed")
         super.onDestroy()
     }
 
