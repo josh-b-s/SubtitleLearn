@@ -1,3 +1,4 @@
+// PinyinOverlayView.kt
 package com.example.subtitlelearn.overlay
 
 import android.content.Context
@@ -14,9 +15,10 @@ class PinyinOverlayView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     // ── Paints ────────────────────────────────────────────────────────────────
-    private val charPaint = paint(Color.WHITE, 50f)
-    private val pinyinPaint = paint(Color.YELLOW, 35f)
-    private val boxFillPaint = paint(Color.argb(180, 0, 0, 0)).apply { style = Paint.Style.FILL }
+    private val charPaint      = paint(Color.WHITE,                    50f)
+    private val pinyinPaint    = paint(Color.YELLOW,                   35f)
+    private val breakdownPaint = paint(Color.argb(210, 160, 210, 255), 26f) // NEW – soft blue
+    private val boxFillPaint   = paint(Color.argb(180, 0, 0, 0)).apply { style = Paint.Style.FILL }
     private val boxStrokePaint = paint(Color.argb(90, 255, 255, 255)).apply {
         style = Paint.Style.STROKE; strokeWidth = 2f
     }
@@ -28,16 +30,17 @@ class PinyinOverlayView @JvmOverloads constructor(
 
     // ── Layout constants ──────────────────────────────────────────────────────
     private val boxRadius = 18f
-    private val boxPad = 12f
-    private val gap = 20f        // between word blocks
-    private val sp = 12f         // internal spacing
+    private val boxPad    = 12f
+    private val gap       = 20f   // between word blocks
+    private val sp        = 12f   // internal spacing
 
     // ── Pre-computed layout ───────────────────────────────────────────────────
     private data class CharCell(val pinyin: String, val char: String, val colWidth: Float)
     private data class WordCell(
-        val cells: List<CharCell>,
-        val meaning: String,
-        val blockWidth: Float
+        val cells:          List<CharCell>,
+        val meaning:        String,
+        val charBreakdown:  String,   // e.g. "你·you  好·good" for multi-char words
+        val blockWidth:     Float
     )
 
     private var layout: List<List<WordCell>> = emptyList()  // lines → words
@@ -47,14 +50,25 @@ class PinyinOverlayView @JvmOverloads constructor(
         val wordCells = words.map { word ->
             val pinyinTokens = Dictionary.getPinyin(word).split(" ")
             val cells = word.mapIndexed { i, ch ->
-                val py = pinyinTokens.getOrElse(i) { "" }
+                val py   = pinyinTokens.getOrElse(i) { "" }
                 val colW = maxOf(pinyinPaint.measureText(py), charPaint.measureText(ch.toString()))
                 CharCell(py, ch.toString(), colW)
             }
-            val wordW = cells.sumOf { it.colWidth.toDouble() }.toFloat() + sp * cells.size
-            val meaning = meanings[word].orEmpty()
+            val wordW    = cells.sumOf { it.colWidth.toDouble() }.toFloat() + sp * cells.size
+            val meaning  = meanings[word].orEmpty()
             val meaningW = if (meaning.isNotEmpty()) charPaint.measureText(meaning) + sp else 0f
-            WordCell(cells, meaning, maxOf(wordW, meaningW))
+
+            // Individual character breakdown – only for multi-char words
+            val charBreakdown = if (word.length > 1) {
+                word.map { ch ->
+                    val m = Dictionary.getMeaning(ch.toString())
+                    if (m.isNotEmpty()) "$ch·$m" else ch.toString()
+                }.joinToString("  ")
+            } else ""
+            val breakdownW = if (charBreakdown.isNotEmpty())
+                breakdownPaint.measureText(charBreakdown) + sp else 0f
+
+            WordCell(cells, meaning, charBreakdown, maxOf(wordW, meaningW, breakdownW))
         }
 
         // Wrap into lines
@@ -75,7 +89,18 @@ class PinyinOverlayView @JvmOverloads constructor(
         }
         if (currentLine.isNotEmpty()) lines += currentLine
 
-        layout = lines
+        // Cap to 40 % of screen height — keep the most recent lines, drop oldest
+        val maxHeight = resources.displayMetrics.heightPixels * 0.40f
+        var usedHeight = sp * 2f
+        val cappedLines = ArrayDeque<List<WordCell>>()
+        for (line in lines.asReversed()) {
+            val lh = lineHeight(line)
+            if (usedHeight + lh > maxHeight) break
+            cappedLines.addFirst(line)
+            usedHeight += lh
+        }
+
+        layout = cappedLines.toList()
         requestLayout()
         invalidate()
     }
@@ -89,56 +114,70 @@ class PinyinOverlayView @JvmOverloads constructor(
     }
 
     private fun lineHeight(line: List<WordCell>): Float {
-        val meaningRows = if (line.any { it.meaning.isNotEmpty() }) 1 else 0
+        val hasBreakdown = line.any { it.charBreakdown.isNotEmpty() }
+        val hasMeaning   = line.any { it.meaning.isNotEmpty() }
         return pinyinPaint.textSize + charPaint.textSize +
-                charPaint.textSize * meaningRows + sp * 5
+                (if (hasBreakdown) breakdownPaint.textSize + sp else 0f) +
+                (if (hasMeaning)   charPaint.textSize      + sp else 0f) +
+                sp * 5
     }
 
     // ── Drawing ───────────────────────────────────────────────────────────────
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        var y = pinyinPaint.textSize + sp
+        var lineY = pinyinPaint.textSize + sp   // pinyin baseline for first line
 
         for (line in layout) {
+            val hasBreakdown = line.any { it.charBreakdown.isNotEmpty() }
+            val hasMeaning   = line.any { it.meaning.isNotEmpty() }
+
+            // Pre-compute shared y baselines for this line
+            val chY = lineY + sp + charPaint.textSize          // char row
+            val bdY = chY   + sp + breakdownPaint.textSize      // breakdown row
+            val mnY = (if (hasBreakdown) bdY else chY) + sp + charPaint.textSize  // meaning row
+
             var x = sp.toFloat()
 
             for (word in line) {
+                // Box height mirrors the line's row count for consistent alignment
                 val boxH = pinyinPaint.textSize + charPaint.textSize +
-                        (if (word.meaning.isNotEmpty()) charPaint.textSize + sp else 0f) + sp * 3
+                        (if (hasBreakdown) breakdownPaint.textSize + sp else 0f) +
+                        (if (hasMeaning)   charPaint.textSize      + sp else 0f) +
+                        sp * 3
+
                 val boxRect = RectF(
                     x - boxPad,
-                    y - pinyinPaint.textSize - boxPad,
+                    lineY - pinyinPaint.textSize - boxPad,
                     x + word.blockWidth + boxPad,
-                    y - pinyinPaint.textSize - boxPad + boxH + boxPad * 2
+                    lineY - pinyinPaint.textSize - boxPad + boxH + boxPad * 2
                 )
-
                 canvas.drawRoundRect(boxRect, boxRadius, boxRadius, boxFillPaint)
                 canvas.drawRoundRect(boxRect, boxRadius, boxRadius, boxStrokePaint)
 
+                // Pinyin + characters
                 val startX = x
                 for (cell in word.cells) {
-                    canvas.drawText(cell.pinyin, x, y, pinyinPaint)
-                    canvas.drawText(cell.char, x, y + sp + charPaint.textSize, charPaint)
+                    canvas.drawText(cell.pinyin, x, lineY, pinyinPaint)
+                    canvas.drawText(cell.char,   x, chY,   charPaint)
                     x += cell.colWidth + sp
                 }
 
+                // Individual char breakdown (multi-char words only)
+                if (word.charBreakdown.isNotEmpty()) {
+                    canvas.drawText(word.charBreakdown, startX, bdY, breakdownPaint)
+                }
+
+                // Word meaning
                 if (word.meaning.isNotEmpty()) {
-                    canvas.drawText(
-                        word.meaning,
-                        startX,
-                        y + sp * 2 + charPaint.textSize * 2,
-                        charPaint
-                    )
+                    canvas.drawText(word.meaning, startX, mnY, charPaint)
                 }
 
                 x = startX + word.blockWidth + gap
             }
 
-            y += lineHeight(line)
+            lineY += lineHeight(line)
         }
     }
 
-    override fun performClick(): Boolean {
-        super.performClick(); return true
-    }
+    override fun performClick(): Boolean { super.performClick(); return true }
 }
