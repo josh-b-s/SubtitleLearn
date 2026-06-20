@@ -1,6 +1,5 @@
 package com.example.subtitlelearn.screens
 
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -18,13 +17,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.subtitlelearn.Dictionary
 import com.example.subtitlelearn.KnownWordsStore
+import com.example.subtitlelearn.SuppressionSettings
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun TranslateScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var input by remember { mutableStateOf("") }
-    var dictVersion by remember { mutableIntStateOf(0) } // bump to force re-segment after switch
+    var dictVersion by remember { mutableIntStateOf(0) }
 
     val availableDicts = remember { Dictionary.listAvailable(context) }
     var selectedDict by remember { mutableStateOf(Dictionary.currentFile) }
@@ -36,10 +36,7 @@ fun TranslateScreen(modifier: Modifier = Modifier) {
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
 
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { expanded = it }
-        ) {
+        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
             OutlinedTextField(
                 value = selectedDict,
                 onValueChange = {},
@@ -48,10 +45,7 @@ fun TranslateScreen(modifier: Modifier = Modifier) {
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 modifier = Modifier.fillMaxWidth().menuAnchor()
             )
-            ExposedDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 availableDicts.forEach { fileName ->
                     DropdownMenuItem(
                         text = { Text(fileName) },
@@ -59,7 +53,7 @@ fun TranslateScreen(modifier: Modifier = Modifier) {
                             selectedDict = fileName
                             expanded = false
                             Dictionary.switchTo(context, fileName)
-                            dictVersion++ // triggers re-segmentation with new dictionary
+                            dictVersion++
                         }
                     )
                 }
@@ -71,7 +65,7 @@ fun TranslateScreen(modifier: Modifier = Modifier) {
         OutlinedTextField(
             value = input,
             onValueChange = { input = it },
-            label = { Text("Type text to be translated...") },
+            label = { Text("Type Chinese text...") },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -90,7 +84,9 @@ fun TranslateScreen(modifier: Modifier = Modifier) {
 @Composable
 private fun WordBox(word: String) {
     val context = LocalContext.current
-    val isKnown = remember(word) { KnownWordsStore.isKnown(context, word) }
+    val suppressionOn = SuppressionSettings.isEnabled(context)
+    val isKnown = suppressionOn && KnownWordsStore.isKnown(context, word)
+
     val pinyin = Dictionary.getPinyin(word)
     val meaning = if (isKnown) "" else Dictionary.getMeaning(word)
     val breakdown = if (word.length > 1) {

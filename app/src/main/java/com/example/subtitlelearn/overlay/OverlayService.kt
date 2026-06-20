@@ -11,6 +11,7 @@ import com.example.subtitlelearn.AppRepository
 import com.example.subtitlelearn.Dictionary
 import com.example.subtitlelearn.Dictionary.segment
 import com.example.subtitlelearn.KnownWordsStore
+import com.example.subtitlelearn.SuppressionSettings
 import com.example.subtitlelearn.WordTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -104,8 +105,9 @@ class OverlayService : Service() {
             AppRepository.transcription.collect { text ->
                 val words = segment(text).filter { it.isNotBlank() }
                 words.forEach { WordTracker.record(it) }
+                val suppressionOn = SuppressionSettings.isEnabled(this@OverlayService)
                 val meanings = words.associateWith { word ->
-                    if (KnownWordsStore.isKnown(this@OverlayService, word)) ""
+                    if (suppressionOn && KnownWordsStore.isKnown(this@OverlayService, word)) ""
                     else Dictionary.getMeaning(word)
                 }
                 overlayView.setText(words, meanings)
