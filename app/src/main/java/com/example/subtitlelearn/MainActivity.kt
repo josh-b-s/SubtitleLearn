@@ -74,7 +74,16 @@ class MainActivity : ComponentActivity() {
                         onStop = {
                             stopService(Intent(this, CaptureService::class.java))
                             stopService(Intent(this, OverlayService::class.java))
-                            quizWords = WordTracker.topWords(this, n = 10)
+
+                            val due = com.example.subtitlelearn.SrsStore.dueWords(this).toSet()
+                            val sessionTop = WordTracker.topWords(this, n = 20)
+                                .map { it.first }
+                                .toSet()
+
+                            val quizSet = (due + sessionTop).toList()
+                            quizWords = quizSet.map { word ->
+                                word to (WordTracker.topWords(this, n = 1000).toMap()[word] ?: 0)
+                            }.take(15)
                         }
                     )
                 }

@@ -9,7 +9,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.subtitlelearn.Dictionary
-import com.example.subtitlelearn.KnownWordsStore
+import com.example.subtitlelearn.SrsStore
 
 @Composable
 fun QuizScreen(words: List<Pair<String, Int>>, onFinish: () -> Unit) {
@@ -23,7 +23,7 @@ fun QuizScreen(words: List<Pair<String, Int>>, onFinish: () -> Unit) {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("No new words tracked this session.")
+            Text("No words due for review this session.")
             Spacer(Modifier.height(16.dp))
             Button(onClick = onFinish) { Text("Done") }
         }
@@ -36,7 +36,7 @@ fun QuizScreen(words: List<Pair<String, Int>>, onFinish: () -> Unit) {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Quiz complete — ${words.size} words reviewed.")
+            Text("Review complete — ${words.size} words graded.")
             Spacer(Modifier.height(16.dp))
             Button(onClick = onFinish) { Text("Done") }
         }
@@ -46,6 +46,7 @@ fun QuizScreen(words: List<Pair<String, Int>>, onFinish: () -> Unit) {
     val (word, count) = words[index]
     val pinyin = Dictionary.getPinyin(word)
     val meaning = Dictionary.getMeaning(word)
+    val state = SrsStore.getState(context, word)
 
     Column(
         Modifier.fillMaxSize().padding(24.dp),
@@ -54,7 +55,11 @@ fun QuizScreen(words: List<Pair<String, Int>>, onFinish: () -> Unit) {
     ) {
         Text("Word ${index + 1} / ${words.size}", style = MaterialTheme.typography.labelMedium)
         Spacer(Modifier.height(8.dp))
-        Text("Heard $count time(s) this session", style = MaterialTheme.typography.labelSmall)
+        val statusText = if (state == null) "New word" else "Seen ${state.repetitions} time(s) before"
+        Text(statusText, style = MaterialTheme.typography.labelSmall)
+        if (count > 0) {
+            Text("Heard $count time(s) this session", style = MaterialTheme.typography.labelSmall)
+        }
         Spacer(Modifier.height(24.dp))
 
         Text(word, style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold)
@@ -72,19 +77,32 @@ fun QuizScreen(words: List<Pair<String, Int>>, onFinish: () -> Unit) {
         } else {
             Text(meaning, style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(24.dp))
+            Text("How well did you know it?", style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(12.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = {
-                    KnownWordsStore.markKnown(context, word)
-                    revealed = false
-                    index++
-                }) { Text("I knew it") }
-
-                Button(onClick = {
-                    revealed = false
-                    index++
-                }) { Text("Didn't know it") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GradeButton("Forgot", onClick = {
+                    SrsStore.review(context, word, quality = 1)
+                    revealed = false; index++
+                })
+                GradeButton("Hard", onClick = {
+                    SrsStore.review(context, word, quality = 3)
+                    revealed = false; index++
+                })
+                GradeButton("Good", onClick = {
+                    SrsStore.review(context, word, quality = 4)
+                    revealed = false; index++
+                })
+                GradeButton("Easy", onClick = {
+                    SrsStore.review(context, word, quality = 5)
+                    revealed = false; index++
+                })
             }
         }
     }
+}
+
+@Composable
+private fun GradeButton(label: String, onClick: () -> Unit) {
+    OutlinedButton(onClick = onClick) { Text(label) }
 }

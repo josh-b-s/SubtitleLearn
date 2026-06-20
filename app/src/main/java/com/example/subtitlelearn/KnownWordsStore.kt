@@ -2,28 +2,18 @@ package com.example.subtitlelearn
 
 import android.content.Context
 
+/**
+ * Thin wrapper kept for call-site compatibility.
+ * "Known" now means "has an SRS card and isn't due for review yet."
+ * Marking known/unknown grades the card directly (good/forgot).
+ */
 object KnownWordsStore {
-    private const val PREFS = "known_words_prefs"
-    private const val KEY = "known_words_set"
+    fun isKnown(context: Context, word: String): Boolean = SrsStore.isSuppressed(context, word)
 
-    fun isKnown(context: Context, word: String): Boolean =
-        prefs(context).getStringSet(KEY, emptySet())!!.contains(word)
+    fun markKnown(context: Context, word: String) = SrsStore.review(context, word, quality = 4)
 
-    fun markKnown(context: Context, word: String) {
-        val set = prefs(context).getStringSet(KEY, emptySet())!!.toMutableSet()
-        set += word
-        prefs(context).edit().putStringSet(KEY, set).apply()
-    }
-
-    fun markUnknown(context: Context, word: String) {
-        val set = prefs(context).getStringSet(KEY, emptySet())!!.toMutableSet()
-        set -= word
-        prefs(context).edit().putStringSet(KEY, set).apply()
-    }
+    fun markUnknown(context: Context, word: String) = SrsStore.review(context, word, quality = 1)
 
     fun allKnown(context: Context): List<String> =
-        prefs(context).getStringSet(KEY, emptySet())!!.toList().sorted()
-
-    private fun prefs(context: Context) =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        SrsStore.allTracked(context).filter { SrsStore.isSuppressed(context, it) }.sorted()
 }
