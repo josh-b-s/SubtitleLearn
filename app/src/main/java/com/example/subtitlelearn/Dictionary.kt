@@ -83,4 +83,22 @@ object Dictionary {
         }
         return result
     }
+
+    /** Search loaded entries by word or meaning substring. Used by the Manage Words screen. */
+    fun search(query: String, limit: Int = 50): List<Triple<String, String, String>> {
+        if (query.isBlank()) return emptyList()
+        val q = query.trim().lowercase(java.util.Locale.ROOT)
+        return entries.entries
+            .filter { (word, pair) -> word.contains(q) || pair.first.contains(q) }
+            .take(limit)
+            .map { (word, pair) -> Triple(word, pair.first, pair.second) }
+    }
+
+    /** Adds or overwrites a custom dictionary entry (e.g. user-added word). */
+    fun addCustomEntry(word: String, meaning: String, pinyin: String = "") {
+        if (word.isBlank() || meaning.isBlank()) return
+        entries[word] = meaning to pinyin
+    }
+
+    fun allWords(): List<String> = entries.keys.toList()
 }

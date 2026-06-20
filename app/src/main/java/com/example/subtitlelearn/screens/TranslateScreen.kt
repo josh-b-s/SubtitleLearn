@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.subtitlelearn.Dictionary
+import com.example.subtitlelearn.KnownWordsStore
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -88,8 +89,10 @@ fun TranslateScreen(modifier: Modifier = Modifier) {
 
 @Composable
 private fun WordBox(word: String) {
+    val context = LocalContext.current
+    val isKnown = remember(word) { KnownWordsStore.isKnown(context, word) }
     val pinyin = Dictionary.getPinyin(word)
-    val meaning = Dictionary.getMeaning(word)
+    val meaning = if (isKnown) "" else Dictionary.getMeaning(word)
     val breakdown = if (word.length > 1) {
         word.map { ch ->
             val m = Dictionary.getMeaning(ch.toString())

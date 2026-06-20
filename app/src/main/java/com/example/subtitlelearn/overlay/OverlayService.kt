@@ -10,6 +10,8 @@ import android.view.WindowManager
 import com.example.subtitlelearn.AppRepository
 import com.example.subtitlelearn.Dictionary
 import com.example.subtitlelearn.Dictionary.segment
+import com.example.subtitlelearn.KnownWordsStore
+import com.example.subtitlelearn.WordTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -101,8 +103,11 @@ class OverlayService : Service() {
         scope.launch {
             AppRepository.transcription.collect { text ->
                 val words = segment(text).filter { it.isNotBlank() }
-                val meanings = words.associateWith { Dictionary.getMeaning(it) }
-                // Safe to call directly — scope is Dispatchers.Main
+                words.forEach { WordTracker.record(it) }
+                val meanings = words.associateWith { word ->
+                    if (KnownWordsStore.isKnown(this@OverlayService, word)) ""
+                    else Dictionary.getMeaning(word)
+                }
                 overlayView.setText(words, meanings)
             }
         }
