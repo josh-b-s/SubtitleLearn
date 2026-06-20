@@ -18,7 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.example.subtitlelearn.overlay.OverlayService
-import com.example.subtitlelearn.screens.ManageWordsScreen
+import com.example.subtitlelearn.screens.DictionaryScreen
+import com.example.subtitlelearn.screens.KnownWordsScreen
 import com.example.subtitlelearn.screens.QuizScreen
 import com.example.subtitlelearn.screens.RecordingScreen
 import com.example.subtitlelearn.screens.TranslateScreen
@@ -100,22 +101,24 @@ fun AppScaffold(onStart: () -> Unit, onStop: () -> Unit) {
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
+                    selected = selectedTab == 0, onClick = { selectedTab = 0 },
                     icon = { Icon(Icons.Default.PlayArrow, contentDescription = "Record") },
                     label = { Text("Record") }
                 )
                 NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
+                    selected = selectedTab == 1, onClick = { selectedTab = 1 },
                     icon = { Icon(Icons.Default.Create, contentDescription = "Translate") },
                     label = { Text("Translate") }
                 )
                 NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.List, contentDescription = "Manage Words") },
-                    label = { Text("Words") }
+                    selected = selectedTab == 2, onClick = { selectedTab = 2 },
+                    icon = { Icon(Icons.Default.List, contentDescription = "Dictionary") },
+                    label = { Text("Dictionary") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 3, onClick = { selectedTab = 3 },
+                    icon = { Icon(Icons.Default.List, contentDescription = "Known Words") },
+                    label = { Text("Known") }
                 )
             }
         }
@@ -123,7 +126,8 @@ fun AppScaffold(onStart: () -> Unit, onStop: () -> Unit) {
         when (selectedTab) {
             0 -> RecordingScreen(Modifier.padding(padding), onStart, onStop)
             1 -> TranslateScreen(Modifier.padding(padding))
-            2 -> ManageWordsScreen(Modifier.padding(padding))
+            2 -> DictionaryScreen(Modifier.padding(padding))
+            3 -> KnownWordsScreen(Modifier.padding(padding))
         }
     }
 }
