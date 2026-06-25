@@ -33,7 +33,7 @@ class MainActivity : ComponentActivity() {
     private val captureRequest =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == RESULT_OK && result.data != null) {
-                WordTracker.reset()
+                WordTracker.reset()  // reset at START of new session, not end
                 startService(Intent(this, OverlayService::class.java))
                 ContextCompat.startForegroundService(
                     this,
@@ -55,7 +55,6 @@ class MainActivity : ComponentActivity() {
 
                 if (quizWords != null) {
                     QuizScreen(words = quizWords!!, onFinish = {
-                        WordTracker.reset()
                         quizWords = null
                     })
                 } else {
@@ -76,15 +75,17 @@ class MainActivity : ComponentActivity() {
                             stopService(Intent(this, CaptureService::class.java))
                             stopService(Intent(this, OverlayService::class.java))
 
-                            val due = com.example.subtitlelearn.SrsStore.dueWords(this).toSet()
-                            val sessionTop = WordTracker.topWords(this, n = 20)
-                                .map { it.first }
-                                .toSet()
+                            val topWords = WordTracker.topWords(this, n = 15)
+                            AudioClipStore.persistWords(this, topWords.map { it.first })
 
-                            val quizSet = (due + sessionTop).toList()
-                            quizWords = quizSet.map { word ->
-                                word to (WordTracker.topWords(this, n = 1000).toMap()[word] ?: 0)
-                            }.take(15)
+                            val due = SrsStore.dueWords(this).toSet()
+                            val sessionWords = topWords.map { it.first }.toSet()
+                            val quizSet = (due.intersect(sessionWords) + sessionWords)
+                                .take(15)
+                                .map { word -> word to (topWords.toMap()[word] ?: 0) }
+
+                            quizWords = quizSet
+                            WordTracker.reset()
                         }
                     )
                 }

@@ -104,7 +104,7 @@ class OverlayService : Service() {
         scope.launch {
             AppRepository.transcription.collect { text ->
                 val words = segment(text).filter { it.isNotBlank() }
-                words.forEach { WordTracker.record(it) }
+                // WordTracker.record() removed — CaptureService owns that now
                 val suppressionOn = SuppressionSettings.isEnabled(this@OverlayService)
                 val meanings = words.associateWith { word ->
                     if (suppressionOn && KnownWordsStore.isKnown(this@OverlayService, word)) ""

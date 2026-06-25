@@ -25,11 +25,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.ArrayDeque
 
-/**
- * Responsibilities: Android Service lifecycle, MediaProjection, AudioRecord.
- * STT logic lives in SttEngine. Results go to AppRepository.
- */
 class CaptureService : Service() {
 
     private lateinit var projectionManager: MediaProjectionManager
@@ -39,6 +36,10 @@ class CaptureService : Service() {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    private val rollingBuffer = ArrayDeque<ShortArray>()
+    private val MAX_CHUNKS = 30  // 30 × 100ms = 3 seconds
+    private var utteranceCounter = 0
+
     companion object {
         private const val TAG = "CaptureService"
         private const val NOTIFICATION_ID = 1
@@ -47,7 +48,7 @@ class CaptureService : Service() {
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (sttEngine != null) return START_STICKY  // already running
+        if (sttEngine != null) return START_STICKY
 
         projectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
@@ -82,18 +83,15 @@ class CaptureService : Service() {
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun buildAudioRecord(): AudioRecord? {
         val projection = mediaProjection ?: return null
-
         val bufferSize = AudioRecord.getMinBufferSize(
             SttEngine.SAMPLE_RATE,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT
         )
-
         val captureConfig = AudioPlaybackCaptureConfiguration.Builder(projection)
             .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
             .addMatchingUsage(AudioAttributes.USAGE_GAME)
             .build()
-
         return AudioRecord.Builder()
             .setAudioFormat(
                 AudioFormat.Builder()
@@ -110,7 +108,8 @@ class CaptureService : Service() {
 
     private suspend fun runCaptureLoop(record: AudioRecord) {
         val engine = sttEngine ?: return
-        val buffer = ShortArray((0.1 * SttEngine.SAMPLE_RATE).toInt()) // 100ms chunks
+        val chunkSize = (0.1 * SttEngine.SAMPLE_RATE).toInt()
+        val buffer = ShortArray(chunkSize)
         var lastText = ""
 
         try {
@@ -118,17 +117,32 @@ class CaptureService : Service() {
                 val read = record.read(buffer, 0, buffer.size)
                 if (read <= 0) continue
 
+                val chunk = buffer.copyOf(read)
+                rollingBuffer.addLast(chunk)
+                if (rollingBuffer.size > MAX_CHUNKS) rollingBuffer.removeFirst()
+
                 val samples = FloatArray(read) { buffer[it] / 32768f }
                 val text = engine.process(samples)
 
                 if (text.isNotBlank() && text != lastText) {
                     lastText = text
                     AppRepository.emitTranscription(text)
+
+                    val snapshot = flattenBuffer()
+                    val words = Dictionary.segment(text).filter { it.isNotBlank() }
+                    words.forEach { word ->
+                        // storeIfAbsent means each word gets the clip from its first appearance
+                        // — distinct audio per word since new words only appear in new contexts
+                        if (!WordTracker.hasSeen(word)) {
+                            AudioClipStore.storeIfAbsent(word, snapshot)
+                        }
+                        WordTracker.record(word)
+                    }
                 }
 
                 if (engine.isEndpoint()) {
                     engine.reset()
-                    lastText = "" // allow same phrase to reappear after a pause
+                    lastText = ""
                 }
             }
         } catch (e: Exception) {
@@ -139,14 +153,21 @@ class CaptureService : Service() {
         }
     }
 
+    private fun flattenBuffer(): ShortArray {
+        val total = rollingBuffer.sumOf { it.size }
+        val out = ShortArray(total)
+        var pos = 0
+        for (chunk in rollingBuffer) {
+            chunk.copyInto(out, pos)
+            pos += chunk.size
+        }
+        return out
+    }
+
     private fun createNotification(): Notification {
         getSystemService(NotificationManager::class.java)
             .createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_ID,
-                    "Capture Service",
-                    NotificationManager.IMPORTANCE_LOW
-                )
+                NotificationChannel(CHANNEL_ID, "Capture Service", NotificationManager.IMPORTANCE_LOW)
             )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Live Transcription")
@@ -157,6 +178,8 @@ class CaptureService : Service() {
 
     override fun onDestroy() {
         scope.cancel()
+        rollingBuffer.clear()
+        AudioClipStore.clearMemory()
         audioRecord?.stop()
         audioRecord?.release()
         audioRecord = null
