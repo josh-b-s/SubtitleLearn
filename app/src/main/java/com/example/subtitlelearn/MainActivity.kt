@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -24,9 +25,14 @@ import com.example.subtitlelearn.screens.QuizScreen
 import com.example.subtitlelearn.screens.RecordingScreen
 import com.example.subtitlelearn.screens.SessionStats
 import com.example.subtitlelearn.screens.SessionSummaryScreen
+import com.example.subtitlelearn.screens.StatsScreen
 import com.example.subtitlelearn.screens.TranslateScreen
 
+// Set to false before shipping
+const val DEBUG = true
+
 class MainActivity : ComponentActivity() {
+
 
     private val projectionManager by lazy {
         getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -153,6 +159,11 @@ fun AppScaffold(isRecording: Boolean, onStart: () -> Unit, onStop: () -> Unit) {
                     icon = { Icon(Icons.Default.List, contentDescription = "Known") },
                     label = { Text("Known") }
                 )
+                NavigationBarItem(
+                    selected = selectedTab == 4, onClick = { selectedTab = 4 },
+                    icon = { Icon(Icons.Default.Star, contentDescription = "Stats") },
+                    label = { Text("Stats") }
+                )
             }
         }
     ) { padding ->
@@ -161,6 +172,7 @@ fun AppScaffold(isRecording: Boolean, onStart: () -> Unit, onStop: () -> Unit) {
             1 -> TranslateScreen(Modifier.padding(padding))
             2 -> DictionaryScreen(Modifier.padding(padding))
             3 -> KnownWordsScreen(Modifier.padding(padding))
+            4 -> StatsScreen(Modifier.padding(padding))
         }
     }
 }

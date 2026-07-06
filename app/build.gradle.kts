@@ -38,6 +38,7 @@ android {
 }
 
 dependencies {
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.tinypinyin)
     implementation(libs.vosk.android)
     implementation(libs.androidx.core.ktx)
