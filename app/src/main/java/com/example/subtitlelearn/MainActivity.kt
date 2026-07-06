@@ -1,17 +1,27 @@
 package com.example.subtitlelearn
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.ScreenShare
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.ScreenShare
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -58,7 +68,7 @@ class MainActivity : ComponentActivity() {
         Dictionary.load(this)
 
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            MaterialTheme( colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 var isRecording by remember { mutableStateOf(false) }
                 var sessionStats by remember { mutableStateOf<SessionStats?>(null) }
                 var quizWords by remember { mutableStateOf<List<Pair<String, Int>>?>(null) }
@@ -130,6 +140,21 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private val micPermissionRequest =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (!granted) {
+                // show a message / toast — permission denied
+            }
+        }
+
+    private fun ensureMicPermission(): Boolean {
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) micPermissionRequest.launch(Manifest.permission.RECORD_AUDIO)
+        return granted
+    }
 }
 
 @Composable
@@ -141,27 +166,27 @@ fun AppScaffold(isRecording: Boolean, onStart: () -> Unit, onStop: () -> Unit) {
             NavigationBar {
                 NavigationBarItem(
                     selected = selectedTab == 0, onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Default.PlayArrow, contentDescription = "Record") },
+                    icon = { Icon(Icons.Default.ScreenShare, contentDescription = "Record") },
                     label = { Text("Record") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1, onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Default.Create, contentDescription = "Translate") },
+                    icon = { Icon(Icons.Default.Mic, contentDescription = "Translate") },
                     label = { Text("Translate") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2, onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.List, contentDescription = "Dictionary") },
+                    icon = { Icon(Icons.Default.MenuBook, contentDescription = "Dictionary") },
                     label = { Text("Dictionary") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 3, onClick = { selectedTab = 3 },
-                    icon = { Icon(Icons.Default.List, contentDescription = "Known") },
+                    icon = { Icon(Icons.Default.Bookmark, contentDescription = "Known") },
                     label = { Text("Known") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 4, onClick = { selectedTab = 4 },
-                    icon = { Icon(Icons.Default.Star, contentDescription = "Stats") },
+                    icon = { Icon(Icons.Default.BarChart, contentDescription = "Stats") },
                     label = { Text("Stats") }
                 )
             }

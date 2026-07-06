@@ -63,24 +63,35 @@ class MicTranscriber(private val context: Context) {
             try {
                 while (isActive) {
                     val read = record.read(buffer, 0, buffer.size)
-                    if (read <= 0) continue
-
-                    val samples = FloatArray(read) { buffer[it] / 32768f }
-                    val partial = engine.process(samples)
-
-                    if (partial.isNotBlank() && partial != lastText) {
-                        lastText = partial
-                        onPartial(accumulatedText + partial)
+                    if (read < 0) {
+                        Log.e("MicTranscriber", "AudioRecord.read error: $read")
+                        onError()
+                        break
                     }
+                    if (read == 0) continue
 
-                    if (engine.isEndpoint()) {
-                        if (lastText.isNotBlank()) {
-                            accumulatedText += lastText
-                            if (!accumulatedText.endsWith(" ")) accumulatedText += " "
+                    try {
+                        val samples = FloatArray(read) { buffer[it] / 32768f }
+                        val partial = engine.process(samples)
+
+                        if (partial.isNotBlank() && partial != lastText) {
+                            lastText = partial
+                            onPartial(accumulatedText + partial)
                         }
-                        engine.reset()
-                        lastText = ""
-                        onPartial(accumulatedText)
+
+                        if (engine.isEndpoint()) {
+                            if (lastText.isNotBlank()) {
+                                accumulatedText += lastText
+                                if (!accumulatedText.endsWith(" ")) accumulatedText += " "
+                            }
+                            engine.reset()
+                            lastText = ""
+                            onPartial(accumulatedText)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("MicTranscriber", "STT processing error", e)
+                        onError()
+                        break
                     }
                 }
             } finally {

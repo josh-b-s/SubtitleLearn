@@ -1,5 +1,8 @@
 package com.example.subtitlelearn.screens
 
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -21,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.example.subtitlelearn.Dictionary
 import com.example.subtitlelearn.KnownWordsStore
 import com.example.subtitlelearn.MicTranscriber
@@ -61,6 +65,17 @@ fun TranslateScreen(modifier: Modifier = Modifier) {
     LaunchedEffect(words.size) {
         // Scroll word flow to bottom when new words appear
         flowScrollState.animateScrollTo(flowScrollState.maxValue)
+    }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            transcriber.start(onPartial = onMicText, onError = { micActive = false })
+            micActive = true
+        } else {
+            micActive = false
+        }
     }
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
@@ -118,11 +133,16 @@ fun TranslateScreen(modifier: Modifier = Modifier) {
                         transcriber.stop()
                         micActive = false
                     } else {
-                        transcriber.start(
-                            onPartial = onMicText,
-                            onError = { micActive = false }
-                        )
-                        micActive = true
+                        val hasPermission = ContextCompat.checkSelfPermission(
+                            context, android.Manifest.permission.RECORD_AUDIO
+                        ) == PackageManager.PERMISSION_GRANTED
+
+                        if (hasPermission) {
+                            transcriber.start(onPartial = onMicText, onError = { micActive = false })
+                            micActive = true
+                        } else {
+                            micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        }
                     }
                 }) {
                     Icon(
