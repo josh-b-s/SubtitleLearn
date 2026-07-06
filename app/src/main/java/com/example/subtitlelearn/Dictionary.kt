@@ -2,18 +2,29 @@ package com.example.subtitlelearn
 
 import android.content.Context
 import android.util.Log
+import org.json.JSONObject
 
 object Dictionary {
     private val entries = HashMap<String, Pair<String, String>>()
+    // Tracks which words in `entries` came from the user (vs. the bundled asset file),
+    // so we know what to persist and re-merge on load/switch.
+    private val customWords = HashSet<String>()
     private const val MAX_WORD_LEN = 6
     private const val DEFAULT_FILE = "zh-en.tsv"
+
+    private const val PREFS = "dictionary_custom_prefs"
+    private fun customKey(fileName: String) = "custom_$fileName"
 
     var currentFile: String = DEFAULT_FILE
         private set
 
+    private var appContext: Context? = null
+
     fun load(context: Context, fileName: String = DEFAULT_FILE) {
+        appContext = context.applicationContext
         if (entries.isNotEmpty() && fileName == currentFile) return
         entries.clear()
+        customWords.clear()
         currentFile = fileName
         try {
             context.assets.open("dictionaries/$fileName").bufferedReader().useLines { lines ->
@@ -32,13 +43,54 @@ object Dictionary {
         } catch (e: Exception) {
             Log.e("DICT", "Failed to load dictionary $fileName", e)
         }
+        loadCustomEntries(context, fileName)
     }
 
     /** Force-reload a different dictionary file, replacing all current entries. */
     fun switchTo(context: Context, fileName: String) {
         entries.clear()
+        customWords.clear()
+        currentFile = "" // force reload below even if fileName equals the old currentFile
         load(context, fileName)
     }
+
+    // ── Custom entry persistence ──────────────────────────────────────────
+
+    private fun loadCustomEntries(context: Context, fileName: String) {
+        val raw = prefs(context).getString(customKey(fileName), null) ?: return
+        try {
+            val obj = JSONObject(raw)
+            obj.keys().forEach { word ->
+                val entry = obj.getJSONObject(word)
+                val meaning = entry.optString("m", "")
+                val pinyin = entry.optString("p", "")
+                if (meaning.isNotEmpty()) {
+                    entries[word] = meaning to pinyin
+                    customWords.add(word)
+                }
+            }
+            Log.i("DICT", "Restored ${obj.length()} custom entries for $fileName")
+        } catch (e: Exception) {
+            Log.e("DICT", "Failed to load custom entries for $fileName", e)
+        }
+    }
+
+    private fun persistCustomEntries() {
+        val context = appContext ?: return
+        val obj = JSONObject()
+        customWords.forEach { word ->
+            entries[word]?.let { (meaning, pinyin) ->
+                obj.put(word, JSONObject().apply {
+                    put("m", meaning)
+                    put("p", pinyin)
+                })
+            }
+        }
+        prefs(context).edit().putString(customKey(currentFile), obj.toString()).apply()
+    }
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /** Lists all dictionary files available under assets/dictionaries/. */
     fun listAvailable(context: Context): List<String> =
@@ -95,10 +147,14 @@ object Dictionary {
     }
 
     /** Adds or overwrites a custom dictionary entry (e.g. user-added word). */
+    /** Adds or overwrites a custom dictionary entry (e.g. user-added word). Persists to disk. */
     fun addCustomEntry(word: String, meaning: String, pinyin: String = "") {
         if (word.isBlank() || meaning.isBlank()) return
         entries[word] = meaning to pinyin
+        customWords.add(word)
+        persistCustomEntries()
     }
 
     fun allWords(): List<String> = entries.keys.toList()
+
 }
