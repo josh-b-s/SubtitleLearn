@@ -4,7 +4,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
-import android.util.Log
+import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -15,37 +15,33 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.subtitlelearn.AudioClipStore
 import com.example.subtitlelearn.Dictionary
 import com.example.subtitlelearn.SrsStore
-import com.example.subtitlelearn.WordTracker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 private val grades = listOf(
-    1 to ("No idea"  to Color(0xFFB00020)),
-    3 to ("Almost"   to Color(0xFFE65100)),
-    4 to ("Got it"   to Color(0xFF2E7D32)),
-    5 to ("Too easy" to Color(0xFF1565C0))
+    1 to ("No idea"  to Color(0xFFB00020)),   // red   — reset
+    3 to ("Roughly"  to Color(0xFFE65100)),   // orange — slow growth
+    5 to ("Got it"   to Color(0xFF2E7D32))    // green  — fast growth
 )
+
+private enum class CardDirection { RECOGNITION, PRODUCTION }
 
 @Composable
 fun QuizScreen(words: List<Pair<String, Int>>, onFinish: () -> Unit) {
-    val context = LocalContext.current
-
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        when {
-            words.isEmpty() -> QuizEndState(
-                message = "No words due for review this session.",
-                onFinish = onFinish
-            )
-            else -> ActiveQuiz(words = words, context = context, onFinish = onFinish)
+        if (words.isEmpty()) {
+            QuizEndState("No words due for review this session.", onFinish)
+        } else {
+            ActiveQuiz(words = words, onFinish = onFinish)
         }
     }
 }
@@ -60,32 +56,35 @@ private fun QuizEndState(message: String, onFinish: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(message, style = MaterialTheme.typography.bodyLarge)
+        Text(message, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
         Spacer(Modifier.height(24.dp))
         Button(onClick = onFinish) { Text("Done") }
     }
 }
 
 @Composable
-private fun ActiveQuiz(
-    words: List<Pair<String, Int>>,
-    context: Context,
-    onFinish: () -> Unit
-) {
+private fun ActiveQuiz(words: List<Pair<String, Int>>, onFinish: () -> Unit) {
+    val context = LocalContext.current
+
+    // Assign each card a random direction upfront so it doesn't flip on recomposition
+    val directions = remember(words) {
+        words.map {
+            if (Math.random() < 0.5) CardDirection.RECOGNITION else CardDirection.PRODUCTION
+        }
+    }
+
     var index by remember { mutableIntStateOf(0) }
     var revealed by remember { mutableStateOf(false) }
     var isPlaying by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     if (index >= words.size) {
-        QuizEndState(
-            message = "Review complete — ${words.size} words graded.",
-            onFinish = onFinish
-        )
+        QuizEndState("Review complete — ${words.size} words graded.", onFinish)
         return
     }
 
     val (word, count) = words[index]
+    val direction = directions[index]
     val pinyin = Dictionary.getPinyin(word)
     val meaning = Dictionary.getMeaning(word)
     val breakdown = if (word.length > 1) {
@@ -96,7 +95,6 @@ private fun ActiveQuiz(
     } else ""
     val state = SrsStore.getState(context, word)
     val hasClip = AudioClipStore.hasClip(context, word)
-    Log.d("QUIZ", "index=$index word='$word' hasClip=$hasClip")
 
     LaunchedEffect(index) {
         revealed = false
@@ -111,12 +109,20 @@ private fun ActiveQuiz(
         verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // ── Meta row ──────────────────────────────────────────────────────────
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                "Word ${index + 1} / ${words.size}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Word ${index + 1} / ${words.size}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                DirectionChip(direction)
+            }
+            Spacer(Modifier.height(4.dp))
             if (state != null && state.repetitions > 0) {
                 Text(
                     "Reviewed ${state.repetitions}× · next in ${state.intervalDays}d",
@@ -139,6 +145,7 @@ private fun ActiveQuiz(
             }
         }
 
+        // ── Card ──────────────────────────────────────────────────────────────
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -147,44 +154,41 @@ private fun ActiveQuiz(
                 Modifier.fillMaxWidth().padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (pinyin.isNotEmpty()) {
-                    Text(pinyin, style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(4.dp))
-                }
-                Text(word, fontSize = 64.sp, fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (breakdown.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(breakdown, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                }
-                if (revealed && meaning.isNotEmpty()) {
-                    Spacer(Modifier.height(16.dp))
-                    Divider()
-                    Spacer(Modifier.height(16.dp))
-                    Text(meaning, style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                when (direction) {
+                    CardDirection.RECOGNITION -> RecognitionFront(
+                        word = word,
+                        pinyin = pinyin,
+                        breakdown = breakdown,
+                        meaning = meaning,
+                        revealed = revealed
+                    )
+                    CardDirection.PRODUCTION -> ProductionFront(
+                        word = word,
+                        pinyin = pinyin,
+                        breakdown = breakdown,
+                        meaning = meaning,
+                        revealed = revealed
+                    )
                 }
             }
         }
 
+        // ── Controls ──────────────────────────────────────────────────────────
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (hasClip) {
-                FilledTonalButton(
-                    onClick = {
-                        if (!isPlaying) {
-                            isPlaying = true
-                            scope.launch(Dispatchers.IO) {
-                                playClip(context, word)
-                                isPlaying = false
-                            }
+            // Audio replay — only useful on recognition cards (hearing the word)
+            if (hasClip && direction == CardDirection.RECOGNITION) {
+                FilledTonalButton(onClick = {
+                    if (!isPlaying) {
+                        isPlaying = true
+                        scope.launch(Dispatchers.IO) {
+                            playClip(context, word)
+                            isPlaying = false
                         }
                     }
-                ) {
+                }) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text(if (isPlaying) "Playing…" else "Replay audio")
@@ -192,11 +196,12 @@ private fun ActiveQuiz(
             }
 
             if (!revealed) {
-                Button(
-                    onClick = { revealed = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Show meaning")
+                val prompt = when (direction) {
+                    CardDirection.RECOGNITION -> "Show meaning"
+                    CardDirection.PRODUCTION  -> "Show Chinese"
+                }
+                Button(onClick = { revealed = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(prompt)
                 }
             } else {
                 Text(
@@ -215,10 +220,12 @@ private fun ActiveQuiz(
                                 SrsStore.review(context, word, quality)
                                 index++
                             },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = color)
                         ) {
-                            Text(label, fontSize = 11.sp, maxLines = 1)
+                            Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         }
                     }
                 }
@@ -227,9 +234,129 @@ private fun ActiveQuiz(
     }
 }
 
+// ── Card face composables ─────────────────────────────────────────────────────
+
+/**
+ * Recognition: show Chinese/pinyin up front, reveal meaning on tap.
+ */
+@Composable
+private fun RecognitionFront(
+    word: String,
+    pinyin: String,
+    breakdown: String,
+    meaning: String,
+    revealed: Boolean
+) {
+    if (pinyin.isNotEmpty()) {
+        Text(pinyin, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(4.dp))
+    }
+    Text(word, fontSize = 64.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (breakdown.isNotEmpty()) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            breakdown,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center
+        )
+    }
+    AnimatedVisibility(visible = revealed) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(Modifier.height(16.dp))
+            Divider()
+            Spacer(Modifier.height(16.dp))
+            Text(
+                meaning,
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+/**
+ * Production: show English meaning up front, reveal Chinese/pinyin on tap.
+ * This forces the user to actively recall the word before seeing it.
+ */
+@Composable
+private fun ProductionFront(
+    word: String,
+    pinyin: String,
+    breakdown: String,
+    meaning: String,
+    revealed: Boolean
+) {
+    Text(
+        "What's the Chinese word for…",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+    )
+    Spacer(Modifier.height(12.dp))
+    Text(
+        meaning,
+        fontSize = 32.sp,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center
+    )
+    AnimatedVisibility(visible = revealed) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(Modifier.height(16.dp))
+            Divider()
+            Spacer(Modifier.height(16.dp))
+            if (pinyin.isNotEmpty()) {
+                Text(
+                    pinyin,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+            Text(
+                word,
+                fontSize = 64.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (breakdown.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    breakdown,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+// ── Direction label ───────────────────────────────────────────────────────────
+
+@Composable
+private fun DirectionChip(direction: CardDirection) {
+    val (label, color) = when (direction) {
+        CardDirection.RECOGNITION -> "Reading"   to MaterialTheme.colorScheme.primaryContainer
+        CardDirection.PRODUCTION  -> "Recall"    to MaterialTheme.colorScheme.secondaryContainer
+    }
+    Surface(
+        color = color,
+        shape = MaterialTheme.shapes.small
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall
+        )
+    }
+}
+
+// ── Playback ──────────────────────────────────────────────────────────────────
+
 private fun playClip(context: Context, word: String) {
     val samples = AudioClipStore.loadClip(context, word) ?: return
-    Log.d("PLAY", "loaded ${samples.size} samples first10=${samples.take(10).toList()}")
 
     val track = AudioTrack.Builder()
         .setAudioAttributes(
@@ -251,26 +378,15 @@ private fun playClip(context: Context, word: String) {
 
     try {
         track.write(samples, 0, samples.size)
-
         val latch = java.util.concurrent.CountDownLatch(1)
         track.notificationMarkerPosition = samples.size - 1
-        track.setPlaybackPositionUpdateListener(
-            object : AudioTrack.OnPlaybackPositionUpdateListener {
-                override fun onMarkerReached(t: AudioTrack) {
-                    Log.d("PLAY", "marker reached for word='$word'")
-                    latch.countDown()
-                }
-                override fun onPeriodicNotification(t: AudioTrack) = Unit
-            }
-        )
-
+        track.setPlaybackPositionUpdateListener(object : AudioTrack.OnPlaybackPositionUpdateListener {
+            override fun onMarkerReached(t: AudioTrack) = latch.countDown()
+            override fun onPeriodicNotification(t: AudioTrack) = Unit
+        })
         track.play()
-        Log.d("PLAY", "track.play() called, waiting for marker")
-
         val clipDurationMs = samples.size * 1000L / 16000L
-        val awaited = latch.await(clipDurationMs + 2000L, java.util.concurrent.TimeUnit.MILLISECONDS)
-        Log.d("PLAY", "latch done awaited=$awaited for word='$word'")
-
+        latch.await(clipDurationMs + 2000L, java.util.concurrent.TimeUnit.MILLISECONDS)
     } finally {
         track.release()
     }

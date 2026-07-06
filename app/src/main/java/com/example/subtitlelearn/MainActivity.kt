@@ -22,6 +22,8 @@ import com.example.subtitlelearn.screens.DictionaryScreen
 import com.example.subtitlelearn.screens.KnownWordsScreen
 import com.example.subtitlelearn.screens.QuizScreen
 import com.example.subtitlelearn.screens.RecordingScreen
+import com.example.subtitlelearn.screens.SessionStats
+import com.example.subtitlelearn.screens.SessionSummaryScreen
 import com.example.subtitlelearn.screens.TranslateScreen
 
 class MainActivity : ComponentActivity() {
@@ -33,7 +35,7 @@ class MainActivity : ComponentActivity() {
     private val captureRequest =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == RESULT_OK && result.data != null) {
-                WordTracker.reset()  // reset at START of new session, not end
+                WordTracker.reset()
                 startService(Intent(this, OverlayService::class.java))
                 ContextCompat.startForegroundService(
                     this,
@@ -51,14 +53,27 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
+                var isRecording by remember { mutableStateOf(false) }
+                var sessionStats by remember { mutableStateOf<SessionStats?>(null) }
                 var quizWords by remember { mutableStateOf<List<Pair<String, Int>>?>(null) }
 
-                if (quizWords != null) {
-                    QuizScreen(words = quizWords!!, onFinish = {
-                        quizWords = null
-                    })
-                } else {
-                    AppScaffold(
+                when {
+                    quizWords != null -> QuizScreen(
+                        words = quizWords!!,
+                        onFinish = { quizWords = null }
+                    )
+
+                    sessionStats != null -> SessionSummaryScreen(
+                        stats = sessionStats!!,
+                        onStartReview = { sessionStats = null },
+                        onSkip = {
+                            sessionStats = null
+                            quizWords = null
+                        }
+                    )
+
+                    else -> AppScaffold(
+                        isRecording = isRecording,
                         onStart = {
                             if (!Settings.canDrawOverlays(this)) {
                                 startActivity(
@@ -68,23 +83,40 @@ class MainActivity : ComponentActivity() {
                                     )
                                 )
                             } else {
+                                isRecording = true
                                 captureRequest.launch(projectionManager.createScreenCaptureIntent())
                             }
                         },
                         onStop = {
+                            isRecording = false
                             stopService(Intent(this, CaptureService::class.java))
                             stopService(Intent(this, OverlayService::class.java))
+
+                            val allSeen = WordTracker.allSeenWords()
+                            val trackedInSrs = SrsStore.allTracked(this).toSet()
+                            val dueSet = SrsStore.dueWords(this).toSet()
+
+                            val alreadyKnown = allSeen.count { KnownWordsStore.isKnown(this, it) }
+                            val newWords = allSeen.count { it !in trackedInSrs }
+                            val dueReviews = allSeen.count { it in dueSet }
 
                             val topWords = WordTracker.topWords(this, n = 15)
                             AudioClipStore.persistWords(this, topWords.map { it.first })
 
-                            val due = SrsStore.dueWords(this).toSet()
-                            val sessionWords = topWords.map { it.first }.toSet()
-                            val quizSet = (due.intersect(sessionWords) + sessionWords)
+                            val due = dueSet
+                            val sessionWordSet = topWords.map { it.first }.toSet()
+                            val quizSet = (due.intersect(sessionWordSet) + sessionWordSet)
                                 .take(15)
                                 .map { word -> word to (topWords.toMap()[word] ?: 0) }
 
                             quizWords = quizSet
+                            sessionStats = SessionStats(
+                                alreadyKnown = alreadyKnown,
+                                newWords = newWords,
+                                dueReviews = dueReviews,
+                                topWords = topWords.take(8),
+                                quizCount = quizSet.size
+                            )
                             WordTracker.reset()
                         }
                     )
@@ -95,7 +127,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppScaffold(onStart: () -> Unit, onStop: () -> Unit) {
+fun AppScaffold(isRecording: Boolean, onStart: () -> Unit, onStop: () -> Unit) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
     Scaffold(
@@ -118,14 +150,14 @@ fun AppScaffold(onStart: () -> Unit, onStop: () -> Unit) {
                 )
                 NavigationBarItem(
                     selected = selectedTab == 3, onClick = { selectedTab = 3 },
-                    icon = { Icon(Icons.Default.List, contentDescription = "Known Words") },
+                    icon = { Icon(Icons.Default.List, contentDescription = "Known") },
                     label = { Text("Known") }
                 )
             }
         }
     ) { padding ->
         when (selectedTab) {
-            0 -> RecordingScreen(Modifier.padding(padding), onStart, onStop)
+            0 -> RecordingScreen(Modifier.padding(padding), isRecording, onStart, onStop)
             1 -> TranslateScreen(Modifier.padding(padding))
             2 -> DictionaryScreen(Modifier.padding(padding))
             3 -> KnownWordsScreen(Modifier.padding(padding))

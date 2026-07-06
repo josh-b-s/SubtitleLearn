@@ -129,7 +129,7 @@ fun KnownWordsScreen(modifier: Modifier = Modifier) {
                     modifier = Modifier.menuAnchor()
                 )
                 ExposedDropdownMenu(expanded = gradeExpanded, onDismissRequest = { gradeExpanded = false }) {
-                    listOf("All", "Forgot", "Hard", "Good", "Easy").forEach { g ->
+                    listOf("All", "No idea", "Roughly", "Got it").forEach { g ->
                         DropdownMenuItem(text = { Text(g) }, onClick = { gradeFilter = g; gradeExpanded = false })
                     }
                 }

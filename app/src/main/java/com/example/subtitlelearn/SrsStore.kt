@@ -20,10 +20,9 @@ object SrsStore {
     )
 
     fun gradeLabel(quality: Int): String = when (quality) {
-        0, 1, 2 -> "Forgot"
-        3 -> "Hard"
-        4 -> "Good"
-        5 -> "Easy"
+        1    -> "No idea"
+        3    -> "Roughly"
+        5    -> "Got it"
         else -> "Unrated"
     }
 

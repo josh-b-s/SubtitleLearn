@@ -26,4 +26,10 @@ object WordTracker {
             .map { it.key to it.value }
 
     fun hasData() = counts.isNotEmpty()
+
+    /** All words seen this session regardless of known status. */
+    fun allSeenWords(): Set<String> = counts.keys.toSet()
+
+    /** Total individual word occurrences (not unique) this session. */
+    fun totalOccurrences(): Int = counts.values.sum()
 }
