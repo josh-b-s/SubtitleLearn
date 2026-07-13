@@ -15,3 +15,6 @@
 local.properties
 /.kotlin/
 /.idea/
+/app/src/main/assets/model/decoder.int8.onnx
+/app/src/main/assets/model/encoder.int8.onnx
+/app/src/main/assets/model/tokens.txt

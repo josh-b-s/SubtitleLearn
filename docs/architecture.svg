@@ -1,0 +1,66 @@
+<svg viewBox="0 0 1000 620" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#555"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="620" fill="#ffffff"/>
+
+  <!-- Box style helper via repeated rects -->
+
+  <!-- Any video/audio -->
+  <rect x="40" y="30" width="220" height="70" rx="10" fill="#eaf2ff" stroke="#3b6fd6" stroke-width="1.5"/>
+  <text x="150" y="58" text-anchor="middle" font-size="15" font-weight="600" fill="#1a3a6b">Any video/audio</text>
+  <text x="150" y="78" text-anchor="middle" font-size="13" fill="#3a5a8a">playing on-screen</text>
+
+  <!-- CaptureService -->
+  <rect x="380" y="30" width="240" height="70" rx="10" fill="#eaf7ec" stroke="#2e9e4d" stroke-width="1.5"/>
+  <text x="500" y="58" text-anchor="middle" font-size="15" font-weight="600" fill="#155c26">CaptureService</text>
+  <text x="500" y="78" text-anchor="middle" font-size="13" fill="#2b7a41">(foreground service)</text>
+
+  <path d="M260,65 L378,65" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="319" y="55" text-anchor="middle" font-size="12" fill="#555">MediaProjection</text>
+  <text x="319" y="90" text-anchor="middle" font-size="12" fill="#555">(system audio)</text>
+
+  <!-- SttEngine -->
+  <rect x="380" y="150" width="240" height="80" rx="10" fill="#fff3e0" stroke="#d68a1a" stroke-width="1.5"/>
+  <text x="500" y="178" text-anchor="middle" font-size="15" font-weight="600" fill="#8a5200">SttEngine</text>
+  <text x="500" y="197" text-anchor="middle" font-size="13" fill="#a56b1a">(Sherpa-ONNX,</text>
+  <text x="500" y="214" text-anchor="middle" font-size="13" fill="#a56b1a">on-device ASR)</text>
+
+  <path d="M500,100 L500,148" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="565" y="128" text-anchor="middle" font-size="12" fill="#555">PCM chunks</text>
+
+  <!-- AppRepository -->
+  <rect x="380" y="280" width="240" height="80" rx="10" fill="#f2eaff" stroke="#7b3fd6" stroke-width="1.5"/>
+  <text x="500" y="310" text-anchor="middle" font-size="15" font-weight="600" fill="#4a1a8a">AppRepository</text>
+  <text x="500" y="330" text-anchor="middle" font-size="13" fill="#5e2ba0">(SharedFlow bus)</text>
+
+  <path d="M500,230 L500,278" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="600" y="258" text-anchor="middle" font-size="12" fill="#555">transcribed text</text>
+
+  <!-- OverlayService -->
+  <rect x="120" y="400" width="240" height="90" rx="10" fill="#eaf2ff" stroke="#3b6fd6" stroke-width="1.5"/>
+  <text x="240" y="428" text-anchor="middle" font-size="15" font-weight="600" fill="#1a3a6b">OverlayService</text>
+  <text x="240" y="447" text-anchor="middle" font-size="13" fill="#3a5a8a">(draws pinyin /</text>
+  <text x="240" y="464" text-anchor="middle" font-size="13" fill="#3a5a8a">meanings live)</text>
+
+  <!-- WordTracker / AudioClipStore -->
+  <rect x="640" y="400" width="260" height="90" rx="10" fill="#eaf7ec" stroke="#2e9e4d" stroke-width="1.5"/>
+  <text x="770" y="425" text-anchor="middle" font-size="15" font-weight="600" fill="#155c26">WordTracker /</text>
+  <text x="770" y="444" text-anchor="middle" font-size="15" font-weight="600" fill="#155c26">AudioClipStore</text>
+  <text x="770" y="463" text-anchor="middle" font-size="13" fill="#2b7a41">(per-session word + audio)</text>
+
+  <path d="M440,360 L260,398" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M560,360 L750,398" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- SrsStore -->
+  <rect x="620" y="520" width="280" height="80" rx="10" fill="#fdeaea" stroke="#c93b3b" stroke-width="1.5"/>
+  <text x="760" y="546" text-anchor="middle" font-size="15" font-weight="600" fill="#7a1c1c">SrsStore (SM-2)</text>
+  <text x="760" y="564" text-anchor="middle" font-size="13" fill="#9c2a2a">Session Summary</text>
+  <text x="760" y="581" text-anchor="middle" font-size="13" fill="#9c2a2a">Quiz</text>
+
+  <path d="M770,490 L770,518" stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="830" y="507" text-anchor="middle" font-size="12" fill="#555">on "Stop"</text>
+</svg>
