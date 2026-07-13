@@ -68,25 +68,31 @@ class MainActivity : ComponentActivity() {
         Dictionary.load(this)
 
         setContent {
-            MaterialTheme( colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
+            MaterialTheme(colorScheme = darkColorScheme()) {
                 var isRecording by remember { mutableStateOf(false) }
                 var sessionStats by remember { mutableStateOf<SessionStats?>(null) }
+                var pendingQuizWords by remember { mutableStateOf<List<Pair<String, Int>>?>(null) } // computed on stop, held until review starts
                 var quizWords by remember { mutableStateOf<List<Pair<String, Int>>?>(null) }
 
                 when {
+                    // Summary checked BEFORE quiz — shows immediately after Stop
+                    sessionStats != null -> SessionSummaryScreen(
+                        stats = sessionStats!!,
+                        onStartReview = {
+                            quizWords = pendingQuizWords
+                            sessionStats = null
+                        },
+                        onSkip = {
+                            sessionStats = null
+                            pendingQuizWords = null
+                        }
+                    )
+
                     quizWords != null -> QuizScreen(
                         words = quizWords!!,
                         onFinish = { quizWords = null }
                     )
 
-                    sessionStats != null -> SessionSummaryScreen(
-                        stats = sessionStats!!,
-                        onStartReview = { sessionStats = null },
-                        onSkip = {
-                            sessionStats = null
-                            quizWords = null
-                        }
-                    )
 
                     else -> AppScaffold(
                         isRecording = isRecording,
@@ -119,13 +125,14 @@ class MainActivity : ComponentActivity() {
                             val topWords = WordTracker.topWords(this, n = 15)
                             AudioClipStore.persistWords(this, topWords.map { it.first })
 
-                            val due = dueSet
                             val sessionWordSet = topWords.map { it.first }.toSet()
-                            val quizSet = (due.intersect(sessionWordSet) + sessionWordSet)
+                            val quizSet = (dueSet.intersect(sessionWordSet) + sessionWordSet)
                                 .take(15)
                                 .map { word -> word to (topWords.toMap()[word] ?: 0) }
 
-                            quizWords = quizSet
+                            // Hold the quiz list, don't show it yet
+                            pendingQuizWords = quizSet
+
                             sessionStats = SessionStats(
                                 alreadyKnown = alreadyKnown,
                                 newWords = newWords,
