@@ -1,4 +1,4 @@
-package com.example.subtitlelearn.screens
+package com.example.subtitlelearn.screens.knownwords
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
@@ -9,8 +9,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.example.subtitlelearn.Dictionary
-import com.example.subtitlelearn.SrsStore
+import com.example.subtitlelearn.dictionary.Dictionary
+import com.example.subtitlelearn.srs.SrsStore
 
 @Composable
 fun AddKnownWordScreen(onDone: () -> Unit) {

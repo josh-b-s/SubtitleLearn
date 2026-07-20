@@ -1,8 +1,10 @@
-package com.example.subtitlelearn
+package com.example.subtitlelearn.srs
 
 import android.content.Context
+import com.example.subtitlelearn.dictionary.Dictionary
 import java.time.LocalDate
 
+/** Dev-only helper for populating fake SRS history so the Stats screen has data to show. */
 object SeedDataHelper {
 
     private val sampleWords = listOf(

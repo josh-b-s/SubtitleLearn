@@ -1,4 +1,4 @@
-package com.example.subtitlelearn.screens
+package com.example.subtitlelearn.screens.session
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween

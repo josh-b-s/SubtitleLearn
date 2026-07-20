@@ -1,15 +1,15 @@
-package com.example.subtitlelearn
+package com.example.subtitlelearn.audio
 
 import android.content.Context
 import android.util.Log
 import android.util.LruCache
 import java.io.File
 
+/** Stores one short audio clip per word (first occurrence wins), keyed directly by word. */
 object AudioClipStore {
     private const val TAG = "AudioClipStore"
     private const val CLIP_DIR = "audio_clips"
 
-    // Keyed directly by word — no utterance key indirection
     // 50 words × ~96KB each ≈ 4.8MB max
     private val memoryClips = LruCache<String, ShortArray>(50)
 
@@ -37,15 +37,7 @@ object AudioClipStore {
                 continue
             }
             try {
-                val bytes = ShortArray(samples.size).let { _ ->
-                    ByteArray(samples.size * 2).also { bytes ->
-                        samples.forEachIndexed { i, s ->
-                            bytes[i * 2]     = (s.toInt() and 0xFF).toByte()
-                            bytes[i * 2 + 1] = (s.toInt() shr 8 and 0xFF).toByte()
-                        }
-                    }
-                }
-                fileFor(context, word).outputStream().use { it.write(bytes) }
+                fileFor(context, word).outputStream().use { it.write(PcmCodec.shortsToBytes(samples)) }
                 Log.d(TAG, "persisted '$word'")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to persist '$word'", e)
@@ -61,10 +53,7 @@ object AudioClipStore {
         return try {
             val file = fileFor(context, word)
             if (!file.exists()) return null
-            val bytes = file.readBytes()
-            ShortArray(bytes.size / 2) { i ->
-                ((bytes[i * 2].toInt() and 0xFF) or (bytes[i * 2 + 1].toInt() shl 8)).toShort()
-            }
+            PcmCodec.bytesToShorts(file.readBytes())
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load clip for '$word'", e)
             null

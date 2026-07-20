@@ -9,40 +9,42 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.automirrored.filled.ScreenShare
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Create
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ScreenShare
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import com.example.subtitlelearn.capture.CaptureService
+import com.example.subtitlelearn.core.WordTracker
+import com.example.subtitlelearn.audio.AudioClipStore
+import com.example.subtitlelearn.audio.SharedRecognizer
+import com.example.subtitlelearn.dictionary.Dictionary
 import com.example.subtitlelearn.overlay.OverlayService
-import com.example.subtitlelearn.screens.DictionaryScreen
-import com.example.subtitlelearn.screens.KnownWordsScreen
-import com.example.subtitlelearn.screens.QuizScreen
-import com.example.subtitlelearn.screens.RecordingScreen
-import com.example.subtitlelearn.screens.SessionStats
-import com.example.subtitlelearn.screens.SessionSummaryScreen
-import com.example.subtitlelearn.screens.StatsScreen
-import com.example.subtitlelearn.screens.TranslateScreen
+import com.example.subtitlelearn.screens.dictionary.DictionaryScreen
+import com.example.subtitlelearn.screens.knownwords.KnownWordsScreen
+import com.example.subtitlelearn.screens.quiz.QuizScreen
+import com.example.subtitlelearn.screens.recording.RecordingScreen
+import com.example.subtitlelearn.screens.session.SessionStats
+import com.example.subtitlelearn.screens.session.SessionSummaryScreen
+import com.example.subtitlelearn.screens.stats.StatsScreen
+import com.example.subtitlelearn.screens.translate.TranslateScreen
+import com.example.subtitlelearn.srs.KnownWordsStore
+import com.example.subtitlelearn.srs.SrsStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 // Set to false before shipping
 const val DEBUG = true
 
 class MainActivity : ComponentActivity() {
-
 
     private val projectionManager by lazy {
         getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -66,6 +68,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Dictionary.load(this)
+
+        // Warm up the STT model now instead of on first use — SttEngine's constructor blocks
+        // while the model loads, so without this the first tap of Record or the mic button
+        // would stall noticeably. Cheap to call again from other screens; it's a no-op once loaded.
+        CoroutineScope(Dispatchers.IO).launch { SharedRecognizer.preload(assets) }
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
@@ -92,7 +99,6 @@ class MainActivity : ComponentActivity() {
                         words = quizWords!!,
                         onFinish = { quizWords = null }
                     )
-
 
                     else -> AppScaffold(
                         isRecording = isRecording,

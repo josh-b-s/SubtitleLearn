@@ -1,8 +1,10 @@
-package com.example.subtitlelearn
+package com.example.subtitlelearn.core
 
 import android.content.Context
 import android.util.Log
+import com.example.subtitlelearn.srs.KnownWordsStore
 
+/** Counts word occurrences for the current recording session. */
 object WordTracker {
     private val counts = HashMap<String, Int>()
 

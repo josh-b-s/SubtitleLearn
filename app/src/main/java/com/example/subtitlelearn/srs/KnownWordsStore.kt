@@ -1,4 +1,4 @@
-package com.example.subtitlelearn
+package com.example.subtitlelearn.srs
 
 import android.content.Context
 

@@ -7,12 +7,11 @@ import android.os.IBinder
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
-import com.example.subtitlelearn.AppRepository
-import com.example.subtitlelearn.Dictionary
-import com.example.subtitlelearn.Dictionary.segment
-import com.example.subtitlelearn.KnownWordsStore
-import com.example.subtitlelearn.SuppressionSettings
-import com.example.subtitlelearn.WordTracker
+import com.example.subtitlelearn.core.AppRepository
+import com.example.subtitlelearn.dictionary.Dictionary
+import com.example.subtitlelearn.dictionary.Dictionary.segment
+import com.example.subtitlelearn.srs.KnownWordsStore
+import com.example.subtitlelearn.srs.SuppressionSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

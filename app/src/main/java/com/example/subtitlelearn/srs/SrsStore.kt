@@ -1,6 +1,7 @@
-package com.example.subtitlelearn
+package com.example.subtitlelearn.srs
 
 import android.content.Context
+import com.example.subtitlelearn.dictionary.Dictionary
 import org.json.JSONObject
 import java.time.LocalDate
 import kotlin.math.max

@@ -1,4 +1,4 @@
-package com.example.subtitlelearn
+package com.example.subtitlelearn.dictionary
 
 import android.content.Context
 import android.util.Log
@@ -104,6 +104,18 @@ object Dictionary {
     fun getMeaning(word: String) = entries[word]?.first.orEmpty()
     fun getPinyin(word: String) = entries[word]?.second.orEmpty()
 
+    /**
+     * Per-character gloss for a multi-char word, e.g. "你·you  好·good".
+     * Returns "" for single-char words (nothing to break down).
+     */
+    fun breakdown(word: String): String {
+        if (word.length <= 1) return ""
+        return word.map { ch ->
+            val m = getMeaning(ch.toString())
+            if (m.isNotEmpty()) "$ch·$m" else ch.toString()
+        }.joinToString("  ")
+    }
+
     private fun shortMeaning(def: String): String =
         def.split(Regex("""\s*[/;|,·•]\s*|\s+-\s+"""))
             .map {
@@ -146,7 +158,6 @@ object Dictionary {
             .map { (word, pair) -> Triple(word, pair.first, pair.second) }
     }
 
-    /** Adds or overwrites a custom dictionary entry (e.g. user-added word). */
     /** Adds or overwrites a custom dictionary entry (e.g. user-added word). Persists to disk. */
     fun addCustomEntry(word: String, meaning: String, pinyin: String = "") {
         if (word.isBlank() || meaning.isBlank()) return
@@ -156,5 +167,4 @@ object Dictionary {
     }
 
     fun allWords(): List<String> = entries.keys.toList()
-
 }

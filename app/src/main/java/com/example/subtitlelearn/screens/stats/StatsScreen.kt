@@ -1,4 +1,4 @@
-package com.example.subtitlelearn.screens
+package com.example.subtitlelearn.screens.stats
 
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.animate
@@ -48,10 +48,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.subtitlelearn.DEBUG
-import com.example.subtitlelearn.Dictionary
-import com.example.subtitlelearn.KnownWordsStore
-import com.example.subtitlelearn.SeedDataHelper
-import com.example.subtitlelearn.SrsStore
+import com.example.subtitlelearn.dictionary.Dictionary
+import com.example.subtitlelearn.srs.KnownWordsStore
+import com.example.subtitlelearn.srs.SeedDataHelper
+import com.example.subtitlelearn.srs.SrsStore
 import java.time.LocalDate
 
 private enum class StatsPeriod(val label: String, val days: Int) {

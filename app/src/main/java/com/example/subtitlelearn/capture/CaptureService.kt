@@ -1,4 +1,4 @@
-package com.example.subtitlelearn
+package com.example.subtitlelearn.capture
 
 import android.Manifest
 import android.app.Activity
@@ -7,26 +7,32 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
-import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.IBinder
 import android.util.Log
+import android.widget.Toast
 import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
+import com.example.subtitlelearn.R
+import com.example.subtitlelearn.audio.AudioClipStore
+import com.example.subtitlelearn.audio.AudioRecordFactory
+import com.example.subtitlelearn.audio.AudioTranscriptionLoop
+import com.example.subtitlelearn.audio.SttEngine
+import com.example.subtitlelearn.audio.TranscriptionSession
+import com.example.subtitlelearn.core.AppRepository
+import com.example.subtitlelearn.core.WordTracker
+import com.example.subtitlelearn.dictionary.Dictionary
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.ArrayDeque
 
+/** Captures system playback audio, transcribes it, and tracks word occurrences for the session. */
 class CaptureService : Service() {
 
     private lateinit var projectionManager: MediaProjectionManager
@@ -38,7 +44,6 @@ class CaptureService : Service() {
 
     private val rollingBuffer = ArrayDeque<ShortArray>()
     private val MAX_CHUNKS = 30  // 30 × 100ms = 3 seconds
-    private var utteranceCounter = 0
 
     companion object {
         private const val TAG = "CaptureService"
@@ -62,11 +67,20 @@ class CaptureService : Service() {
             return START_NOT_STICKY
         }
 
+        if (TranscriptionSession.acquire(TranscriptionSession.Owner.CAPTURE)) {
+            Toast.makeText(
+                this,
+                "Mic translator is also running — performance may be reduced",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+
         startForeground(NOTIFICATION_ID, createNotification())
         mediaProjection = projectionManager.getMediaProjection(resultCode, data)
 
         val record = buildAudioRecord() ?: run {
             Log.e(TAG, "AudioRecord failed to initialise")
+            TranscriptionSession.release(TranscriptionSession.Owner.CAPTURE)
             stopSelf()
             return START_NOT_STICKY
         }
@@ -75,7 +89,7 @@ class CaptureService : Service() {
         sttEngine = SttEngine(assets)
         record.startRecording()
 
-        scope.launch { runCaptureLoop(record) }
+        scope.launch { runCaptureLoop(record, sttEngine!!) }
         Log.i(TAG, "Started")
         return START_STICKY
     }
@@ -83,49 +97,17 @@ class CaptureService : Service() {
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun buildAudioRecord(): AudioRecord? {
         val projection = mediaProjection ?: return null
-        val bufferSize = AudioRecord.getMinBufferSize(
-            SttEngine.SAMPLE_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT
-        )
-        val captureConfig = AudioPlaybackCaptureConfiguration.Builder(projection)
-            .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-            .addMatchingUsage(AudioAttributes.USAGE_GAME)
-            .build()
-        return AudioRecord.Builder()
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(SttEngine.SAMPLE_RATE)
-                    .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
-                    .build()
-            )
-            .setBufferSizeInBytes(bufferSize * 2)
-            .setAudioPlaybackCaptureConfig(captureConfig)
-            .build()
-            .takeIf { it.state == AudioRecord.STATE_INITIALIZED }
+        return AudioRecordFactory.create(AudioRecordFactory.Source.PlaybackCapture(projection))
     }
 
-    private suspend fun runCaptureLoop(record: AudioRecord) {
-        val engine = sttEngine ?: return
-        val chunkSize = (0.1 * SttEngine.SAMPLE_RATE).toInt()
-        val buffer = ShortArray(chunkSize)
-        var lastText = ""
-
+    private suspend fun runCaptureLoop(record: AudioRecord, engine: SttEngine) {
         try {
-            while (currentCoroutineContext().isActive) {
-                val read = record.read(buffer, 0, buffer.size)
-                if (read <= 0) continue
-
-                val chunk = buffer.copyOf(read)
-                rollingBuffer.addLast(chunk)
-                if (rollingBuffer.size > MAX_CHUNKS) rollingBuffer.removeFirst()
-
-                val samples = FloatArray(read) { buffer[it] / 32768f }
-                val text = engine.process(samples)
-
-                if (text.isNotBlank() && text != lastText) {
-                    lastText = text
+            AudioTranscriptionLoop(record, engine).run(
+                onChunk = { chunk ->
+                    rollingBuffer.addLast(chunk)
+                    if (rollingBuffer.size > MAX_CHUNKS) rollingBuffer.removeFirst()
+                },
+                onResult = { text ->
                     AppRepository.emitTranscription(text)
 
                     val snapshot = flattenBuffer()
@@ -138,13 +120,14 @@ class CaptureService : Service() {
                         }
                         WordTracker.record(word)
                     }
+                },
+                onReadError = { code ->
+                    Log.e(TAG, "AudioRecord.read error: $code")
+                },
+                onProcessError = { e ->
+                    Log.w(TAG, "Dropped a bad chunk during STT processing: ${e.message}")
                 }
-
-                if (engine.isEndpoint()) {
-                    engine.reset()
-                    lastText = ""
-                }
-            }
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Capture loop failed: ${e.message}")
             withContext(Dispatchers.Main) { stopSelf() }
@@ -177,6 +160,7 @@ class CaptureService : Service() {
     }
 
     override fun onDestroy() {
+        TranscriptionSession.release(TranscriptionSession.Owner.CAPTURE)
         scope.cancel()
         rollingBuffer.clear()
         AudioClipStore.clearMemory()

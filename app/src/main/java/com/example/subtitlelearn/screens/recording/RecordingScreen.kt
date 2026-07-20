@@ -1,4 +1,4 @@
-package com.example.subtitlelearn.screens
+package com.example.subtitlelearn.screens.recording
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -52,7 +52,6 @@ fun RecordingScreen(
 
 @Composable
 private fun BigCircleButton(isRecording: Boolean, onClick: () -> Unit) {
-    // Pulse animation only while recording
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
@@ -64,7 +63,6 @@ private fun BigCircleButton(isRecording: Boolean, onClick: () -> Unit) {
         label = "pulse_scale"
     )
 
-    // Outer glow ring when recording
     if (isRecording) {
         Box(
             Modifier
@@ -109,11 +107,7 @@ private fun CoreButton(isRecording: Boolean, onClick: () -> Unit) {
                     color = Color.White
                 )
                 if (isRecording) {
-                    Text(
-                        "& Review",
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.85f)
-                    )
+                    Text("& Review", fontSize = 13.sp, color = Color.White.copy(alpha = 0.85f))
                 }
             }
         }

@@ -8,7 +8,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
-import com.example.subtitlelearn.Dictionary
+import com.example.subtitlelearn.dictionary.Dictionary
 
 class PinyinOverlayView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
@@ -59,12 +59,7 @@ class PinyinOverlayView @JvmOverloads constructor(
             val meaningW = if (meaning.isNotEmpty()) charPaint.measureText(meaning) + sp else 0f
 
             // Individual character breakdown – only for multi-char words
-            val charBreakdown = if (word.length > 1) {
-                word.map { ch ->
-                    val m = Dictionary.getMeaning(ch.toString())
-                    if (m.isNotEmpty()) "$ch·$m" else ch.toString()
-                }.joinToString("  ")
-            } else ""
+            val charBreakdown = Dictionary.breakdown(word)
             val breakdownW = if (charBreakdown.isNotEmpty())
                 breakdownPaint.measureText(charBreakdown) + sp else 0f
 

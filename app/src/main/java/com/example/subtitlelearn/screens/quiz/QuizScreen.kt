@@ -1,9 +1,5 @@
-package com.example.subtitlelearn.screens
+package com.example.subtitlelearn.screens.quiz
 
-import android.content.Context
-import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioTrack
 import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -18,9 +14,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.subtitlelearn.AudioClipStore
-import com.example.subtitlelearn.Dictionary
-import com.example.subtitlelearn.SrsStore
+import com.example.subtitlelearn.audio.AudioClipStore
+import com.example.subtitlelearn.audio.AudioPlayer
+import com.example.subtitlelearn.dictionary.Dictionary
+import com.example.subtitlelearn.srs.SrsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -87,12 +84,7 @@ private fun ActiveQuiz(words: List<Pair<String, Int>>, onFinish: () -> Unit) {
     val direction = directions[index]
     val pinyin = Dictionary.getPinyin(word)
     val meaning = Dictionary.getMeaning(word)
-    val breakdown = if (word.length > 1) {
-        word.map { ch ->
-            val m = Dictionary.getMeaning(ch.toString())
-            if (m.isNotEmpty()) "$ch·$m" else ch.toString()
-        }.joinToString("  ")
-    } else ""
+    val breakdown = Dictionary.breakdown(word)
     val state = SrsStore.getState(context, word)
     val hasClip = AudioClipStore.hasClip(context, word)
 
@@ -184,7 +176,7 @@ private fun ActiveQuiz(words: List<Pair<String, Int>>, onFinish: () -> Unit) {
                     if (!isPlaying) {
                         isPlaying = true
                         scope.launch(Dispatchers.IO) {
-                            playClip(context, word)
+                            AudioPlayer.playClip(context, word)
                             isPlaying = false
                         }
                     }
@@ -354,40 +346,3 @@ private fun DirectionChip(direction: CardDirection) {
 }
 
 // ── Playback ──────────────────────────────────────────────────────────────────
-
-private fun playClip(context: Context, word: String) {
-    val samples = AudioClipStore.loadClip(context, word) ?: return
-
-    val track = AudioTrack.Builder()
-        .setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build()
-        )
-        .setAudioFormat(
-            AudioFormat.Builder()
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setSampleRate(16000)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                .build()
-        )
-        .setBufferSizeInBytes(samples.size * 2)
-        .setTransferMode(AudioTrack.MODE_STATIC)
-        .build()
-
-    try {
-        track.write(samples, 0, samples.size)
-        val latch = java.util.concurrent.CountDownLatch(1)
-        track.notificationMarkerPosition = samples.size - 1
-        track.setPlaybackPositionUpdateListener(object : AudioTrack.OnPlaybackPositionUpdateListener {
-            override fun onMarkerReached(t: AudioTrack) = latch.countDown()
-            override fun onPeriodicNotification(t: AudioTrack) = Unit
-        })
-        track.play()
-        val clipDurationMs = samples.size * 1000L / 16000L
-        latch.await(clipDurationMs + 2000L, java.util.concurrent.TimeUnit.MILLISECONDS)
-    } finally {
-        track.release()
-    }
-}

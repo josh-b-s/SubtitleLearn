@@ -1,6 +1,7 @@
-package com.example.subtitlelearn.screens
+package com.example.subtitlelearn.screens.translate
 
 import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -25,10 +26,10 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.example.subtitlelearn.Dictionary
-import com.example.subtitlelearn.KnownWordsStore
-import com.example.subtitlelearn.MicTranscriber
-import com.example.subtitlelearn.SuppressionSettings
+import com.example.subtitlelearn.dictionary.Dictionary
+import com.example.subtitlelearn.srs.KnownWordsStore
+import com.example.subtitlelearn.translate.MicTranscriber
+import com.example.subtitlelearn.srs.SuppressionSettings
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -67,15 +68,25 @@ fun TranslateScreen(modifier: Modifier = Modifier) {
         flowScrollState.animateScrollTo(flowScrollState.maxValue)
     }
 
+    fun startMic() {
+        val started = transcriber.start(
+            onPartial = onMicText,
+            onError = { micActive = false },
+            onConcurrentWarning = {
+                Toast.makeText(
+                    context,
+                    "Screen-capture recording is also running — performance may be reduced",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        )
+        micActive = started
+    }
+
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) {
-            transcriber.start(onPartial = onMicText, onError = { micActive = false })
-            micActive = true
-        } else {
-            micActive = false
-        }
+        if (granted) startMic() else micActive = false
     }
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
@@ -138,8 +149,7 @@ fun TranslateScreen(modifier: Modifier = Modifier) {
                         ) == PackageManager.PERMISSION_GRANTED
 
                         if (hasPermission) {
-                            transcriber.start(onPartial = onMicText, onError = { micActive = false })
-                            micActive = true
+                            startMic()
                         } else {
                             micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                         }
@@ -185,12 +195,7 @@ private fun WordBox(word: String) {
     val isKnown = suppressionOn && KnownWordsStore.isKnown(context, word)
     val pinyin = Dictionary.getPinyin(word)
     val meaning = if (isKnown) "" else Dictionary.getMeaning(word)
-    val breakdown = if (word.length > 1) {
-        word.map { ch ->
-            val m = Dictionary.getMeaning(ch.toString())
-            if (m.isNotEmpty()) "$ch·$m" else ch.toString()
-        }.joinToString("  ")
-    } else ""
+    val breakdown = Dictionary.breakdown(word)
 
     Column(
         modifier = Modifier
